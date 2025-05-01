@@ -228,6 +228,38 @@ fit_model <- function(model_spec,
   # Initialize warning messages container
   warning_messages <- character(0)
   
+  # Check for build tools - try a basic Stan/brms operation that will fail if tools aren't installed
+  build_tools_check <- try({
+    # This is a minimally small Stan model that should compile quickly if tools are installed
+    test_model <- "
+    data {
+      int<lower=0> N;
+    }
+    parameters {
+      real mu;
+    }
+    model {
+      mu ~ normal(0, 1);
+    }
+    "
+    rstan::stan_model(model_code = test_model, model_name = "test_model", verbose = FALSE)
+  }, silent = TRUE)
+  
+  # Check if we had a build tools error
+  if (inherits(build_tools_check, "try-error") && 
+      (grepl("tools for compilation", build_tools_check[1]) || 
+       grepl("C++ compiler", build_tools_check[1]) ||
+       grepl("cannot compile", build_tools_check[1]))) {
+    error_msg <- paste(
+      "Stan/brms requires additional build tools to compile models.",
+      "For Mac, install the Xcode Command Line Tools. For Windows, install Rtools.",
+      "See https://mc-stan.org/docs/stan-users-guide/prereqs.html for installation instructions."
+    )
+    log_message(error_msg, level = "error")
+    return(NULL)
+  }
+  
+  # If we passed the build tools check, continue with model fitting
   # Set up warning handler
   withCallingHandlers({
     model <- brms::brm(
