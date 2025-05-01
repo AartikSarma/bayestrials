@@ -156,9 +156,20 @@ fit_model <- function(model_spec,
   # Validate model spec
   validate_model_spec(model_spec)
   
-  # Set seed for reproducibility
+  # Set seed for reproducibility and ensure it's a single integer
   if (!is.null(seed)) {
-    set_seed(seed)
+    # Try to coerce to a single integer
+    tryCatch({
+      seed <- as.integer(seed)[1]
+      set_seed(seed)
+    }, error = function(e) {
+      stop("seed must be coercible to a single integer value", call. = FALSE)
+    }, warning = function(w) {
+      # If there's a warning, coerce anyway but log it
+      seed <- as.integer(seed)[1]
+      log_message(paste("Warning when coercing seed:", w$message), level = "warning")
+      set_seed(seed)
+    })
   }
   
   # Get priors if available
@@ -195,6 +206,9 @@ fit_model <- function(model_spec,
   log_message("Fitting model...", level = "info")
   
   model <- tryCatch({
+    # Ensure seed is a single integer for brms::brm
+    brm_seed <- if (!is.null(seed)) as.integer(seed)[1] else NULL
+    
     brms::brm(
       formula = formula,
       data = data,
@@ -203,7 +217,7 @@ fit_model <- function(model_spec,
       chains = chains,
       cores = cores,
       iter = iter,
-      seed = seed,
+      seed = brm_seed,
       control = control,
       silent = 2
     )
