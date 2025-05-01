@@ -40,7 +40,7 @@ capabilities while maintaining reproducibility.
 }
 
 \author{
-\strong{Maintainer}: Your Name \email{your.email@example.com}
+\strong{Maintainer}: Aartik Sarma \email{aartik.sarma@ucsf.edu}
 
 }
 \keyword{internal}
