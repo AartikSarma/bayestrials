@@ -217,16 +217,20 @@ fit_model <- function(model_spec,
   
   # Define default control parameters if not provided
   if (is.null(control)) {
-    control <- list(adapt_delta = 0.9)
+    # Use higher adapt_delta to help prevent divergent transitions
+    control <- list(adapt_delta = 0.95, max_treedepth = 12)
   }
   
   # Fit model
   log_message("Fitting model...", level = "info")
   
-  model <- tryCatch({
-    # Don't pass seed directly to brms::brm, just set it globally before
-    # This avoids issues with seed coercion in brms
-    brms::brm(
+  # Use a different approach to capture warnings without failing
+  # Initialize warning messages container
+  warning_messages <- character(0)
+  
+  # Set up warning handler
+  withCallingHandlers({
+    model <- brms::brm(
       formula = formula,
       data = data,
       family = family,
@@ -238,14 +242,22 @@ fit_model <- function(model_spec,
       control = control,
       silent = 2
     )
+  }, warning = function(w) {
+    # Capture the warning
+    warning_messages <<- c(warning_messages, w$message)
+    log_message(paste("Warning in model fitting:", w$message), level = "warning")
+    # Keep going, don't stop on warnings
+    invokeRestart("muffleWarning")
   }, error = function(e) {
     log_message(paste("Error fitting model:", e$message), level = "error")
     return(NULL)
-  }, warning = function(w) {
-    log_message(paste("Warning in model fitting:", w$message), level = "warning")
-    # Return NULL to force error handler, but warnings are stored
-    return(NULL)
   })
+  
+  # If no model was created but we have warnings, set model to NULL with message
+  if (!exists("model") && length(warning_messages) > 0) {
+    log_message("Model fitting failed due to warnings", level = "error")
+    model <- NULL
+  }
   
   # Check if model fitting was successful
   if (is.null(model)) {
