@@ -790,7 +790,7 @@ if (!is.null(treat_param) && params$include_plots && !is.null(comparison)) {
 if (!is.null(sens_results$comparisons$loo)) {
   cat("### Leave-One-Out Cross-Validation Comparison\n\n")
   kable(sens_results$comparisons$loo, digits = 2)
-  cat("\nLower LOOIC values indicate better model fit. Negative values in 'elpd_diff' indicate worse models compared to the top-ranked model.\n")
+  cat("\nLower LOOIC values indicate better model fit.\n")
 }
 ```
 
@@ -1239,7 +1239,9 @@ reproducibility_report <- function(workflow,
     "## Session Information\n\n",
     
     "R version: ", R.version$version.string, "\n\n",
+    
     "Platform: ", R.version$platform, "\n\n",
+    
     "bayestrials version: ", get_version(), "\n\n",
     
     "### Package Versions\n\n",
@@ -1553,7 +1555,7 @@ capture_workflow <- function(analysis_steps, save_path = "workflow.json") {
     workflow <- add_step(
       workflow,
       name = step$name,
-      function_name = step$function,
+      function_name = step$function_name,
       args = step$args
     )
   }
