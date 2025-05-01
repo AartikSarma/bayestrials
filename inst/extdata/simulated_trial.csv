@@ -1,0 +1,21 @@
+id,treatment,age,sex,center,response,baseline
+1,Control,45,Male,Site A,0,28
+2,Treatment,62,Female,Site B,1,31
+3,Control,51,Female,Site A,0,22
+4,Treatment,48,Male,Site C,1,25
+5,Control,59,Male,Site B,0,30
+6,Treatment,53,Female,Site A,1,27
+7,Control,47,Female,Site C,0,24
+8,Treatment,55,Male,Site B,1,29
+9,Control,61,Female,Site A,0,32
+10,Treatment,49,Male,Site C,1,26
+11,Control,57,Male,Site B,0,31
+12,Treatment,50,Female,Site A,0,23
+13,Control,58,Female,Site C,0,30
+14,Treatment,52,Male,Site B,1,28
+15,Control,46,Female,Site A,0,25
+16,Treatment,60,Male,Site C,1,33
+17,Control,54,Male,Site B,0,29
+18,Treatment,48,Female,Site A,1,26
+19,Control,63,Female,Site C,0,34
+20,Treatment,51,Male,Site B,1,27

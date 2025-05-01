@@ -1,0 +1,37 @@
+Package: bayestrials
+Title: A Robust Framework for Bayesian Clinical Trial Reanalysis
+Version: 0.1.0
+Authors@R: 
+    person("Your", "Name", email = "your.email@example.com", role = c("aut", "cre"))
+Description: A comprehensive R package designed for Bayesian reanalysis of clinical trials,
+    combining the statistical power of 'brms' with the workflow efficiency of 'tidyverse'.
+    The package enables systematic model specification, flexible parameter definition,
+    and powerful visualization capabilities while maintaining reproducibility.
+License: MIT + file LICENSE
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.2.3
+Imports:
+    brms (>= 2.18.0),
+    rstan (>= 2.26.0),
+    posterior (>= 1.3.1),
+    dplyr,
+    tidyr,
+    ggplot2,
+    purrr,
+    tidybayes (>= 3.0.0),
+    renv,
+    methods,
+    stats,
+    utils
+Suggests:
+    bayesplot,
+    ggdist,
+    shiny,
+    rmarkdown,
+    quarto,
+    dbarts,
+    testthat (>= 3.0.0),
+    knitr
+Config/testthat/edition: 3
+VignetteBuilder: knitr

@@ -1,0 +1,205 @@
+---
+title: "Introduction to bayestrials"
+author: "Your Name"
+date: "`r Sys.Date()`"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Introduction to bayestrials}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  eval = FALSE
+)
+```
+
+## Introduction
+
+The `bayestrials` package provides a comprehensive framework for Bayesian reanalysis of clinical trials. This vignette introduces the basic workflow and demonstrates key features of the package.
+
+```{r setup}
+library(bayestrials)
+```
+
+## Basic Workflow
+
+### 1. Model Specification
+
+One of the key features of `bayestrials` is the ability to specify models using CSV files. Here's an example model specification:
+
+```{r}
+# Read model specifications from CSV files
+model_specs <- read_model_spec(
+  system.file("extdata", "model_specs.csv", package = "bayestrials"),
+  system.file("extdata", "prior_specs.csv", package = "bayestrials"),
+  system.file("extdata", "covariate_specs.csv", package = "bayestrials")
+)
+
+# Look at the primary model
+model_specs$primary_model
+```
+
+You can also create model specifications programmatically:
+
+```{r}
+# Create a model specification
+my_model <- create_model_spec(
+  outcome = "response",
+  predictors = "treatment + age + sex",
+  random_effects = "(1|center)",
+  family = "bernoulli",
+  link = "logit",
+  model_name = "my_custom_model"
+)
+
+# Specify priors
+my_priors <- PriorSpecification()
+my_priors <- add_prior(my_priors, "b_treatment", "normal", 0, 1)
+my_priors <- add_prior(my_priors, "b_age", "normal", 0, 2)
+my_priors <- add_prior(my_priors, "sd_center", "half_cauchy", NA, 5, 0)
+
+# Attach priors to model
+attr(my_model, "priors") <- my_priors
+```
+
+### 2. Data Preparation
+
+`bayestrials` includes functions for loading and preprocessing clinical trial data:
+
+```{r}
+# Load simulated data (in a real scenario, you would use load_clinical_trial)
+set.seed(42)
+n <- 200
+data <- data.frame(
+  id = 1:n,
+  treatment = factor(sample(c("Control", "Treatment"), n, replace = TRUE)),
+  age = rnorm(n, 50, 10),
+  sex = factor(sample(c("Male", "Female"), n, replace = TRUE)),
+  center = factor(sample(c("Site A", "Site B", "Site C"), n, replace = TRUE)),
+  response = rbinom(n, 1, 0.5)
+)
+
+# Preprocess data
+preprocessed_data <- preprocess_data(
+  data,
+  system.file("extdata", "covariate_specs.csv", package = "bayestrials")
+)
+```
+
+For multi-trial analyses, you can harmonize variables across trials:
+
+```{r}
+# Create simulated trial data
+trial1 <- data.frame(
+  id = 1:100,
+  arm = factor(sample(c("Control", "Treatment"), 100, replace = TRUE)),
+  age_years = rnorm(100, 50, 10),
+  gender = factor(sample(c("Male", "Female"), 100, replace = TRUE)),
+  site = factor(sample(c("A", "B", "C"), 100, replace = TRUE)),
+  outcome = rbinom(100, 1, 0.5)
+)
+
+trial2 <- data.frame(
+  id = 1:120,
+  trt = factor(sample(c("Control", "Treatment"), 120, replace = TRUE)),
+  age = rnorm(120, 55, 12),
+  sex = factor(sample(c("M", "F"), 120, replace = TRUE)),
+  center = factor(sample(c("1", "2", "3"), 120, replace = TRUE)),
+  resp = rbinom(120, 1, 0.6)
+)
+
+# Harmonize trials
+trials <- list(trial1 = trial1, trial2 = trial2)
+harmonized_trials <- harmonize_trials(
+  trials,
+  mapping_file = system.file("extdata", "variable_mapping.csv", package = "bayestrials")
+)
+```
+
+### 3. Fitting Models
+
+Once you have prepared your data and specified your model, you can fit it using `fit_model()`:
+
+```{r}
+# Fit model
+model <- fit_model(model_specs$primary_model, preprocessed_data)
+
+# Check model
+model
+```
+
+For sensitivity analyses, you can fit multiple models with different specifications:
+
+```{r}
+# Define sensitivity specifications
+sensitivity_specs <- list(
+  model_specs$primary_model,
+  model_specs$sensitivity_1
+)
+
+# Run sensitivity analyses
+sensitivity_results <- run_sensitivity_analyses(
+  model,
+  preprocessed_data,
+  sensitivity_specs,
+  type = "model"
+)
+```
+
+### 4. Analyzing Results
+
+`bayestrials` provides functions for extracting and visualizing model results:
+
+```{r}
+# Extract posterior summaries
+posterior_summary(model)
+
+# Plot posterior distribution
+plot_posterior(model, variables = "b_treatment")
+
+# Check model diagnostics
+diagnostics <- check_diagnostics(model)
+```
+
+### 5. Identifying Effect Modifiers
+
+You can test for treatment effect heterogeneity:
+
+```{r}
+# Identify effect modifiers
+modifiers <- identify_effect_modifiers(
+  model,
+  preprocessed_data,
+  treatment_var = "treatment",
+  candidate_modifiers = c("age", "sex")
+)
+
+# Plot interaction
+plot_interaction(modifiers, "age")
+```
+
+### 6. Generating Reports
+
+`bayestrials` can generate comprehensive reports for models:
+
+```{r}
+# Generate basic report
+report_file <- generate_report(model, template = "basic_report")
+
+# Generate sensitivity report
+sensitivity_report_file <- sensitivity_report(sensitivity_results)
+```
+
+## Conclusion
+
+This vignette provided a brief introduction to the `bayestrials` package. For more detailed examples and advanced features, please refer to the other vignettes and function documentation.
+
+## Session Info
+
+```{r}
+sessionInfo()
+```

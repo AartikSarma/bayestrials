@@ -1,0 +1,5 @@
+model_name,outcome,predictors,random_effects,family,link
+primary_model,response,treatment + age + sex,(1|center),bernoulli,logit
+sensitivity_1,response,treatment * age + sex,(1|center),bernoulli,logit
+continuous_outcome,y,treatment + baseline + age,,gaussian,identity
+survival_model,time,treatment + risk_score,,weibull,log

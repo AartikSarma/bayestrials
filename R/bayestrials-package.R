@@ -1,0 +1,36 @@
+#' @keywords internal
+"_PACKAGE"
+
+#' bayestrials: A Robust Framework for Bayesian Clinical Trial Reanalysis
+#'
+#' The bayestrials package provides a comprehensive framework for Bayesian
+#' reanalysis of clinical trials, combining the statistical power of 'brms'
+#' with the workflow efficiency of 'tidyverse'. The package enables systematic
+#' model specification, flexible parameter definition, and powerful visualization
+#' capabilities while maintaining reproducibility.
+#'
+#' @section Key Features:
+#' \itemize{
+#'   \item CSV-based model specification system
+#'   \item Data harmonization for multi-trial analyses
+#'   \item Flexible prior specification
+#'   \item Systematic sensitivity analysis
+#'   \item Effect modifier identification
+#'   \item Publication-ready visualization
+#'   \item Reproducibility tools
+#' }
+#'
+#' @section Main Functions:
+#' \itemize{
+#'   \item Model Specification: \code{\link{read_model_spec}}, \code{\link{create_model_spec}}
+#'   \item Data Preparation: \code{\link{harmonize_trials}}, \code{\link{preprocess_data}}
+#'   \item Prior Specification: \code{\link{specify_priors}}, \code{\link{plot_priors}}
+#'   \item Model Fitting: \code{\link{fit_model}}, \code{\link{fit_models}}
+#'   \item Effect Modifiers: \code{\link{identify_effect_modifiers}}, \code{\link{plot_interaction}}
+#'   \item Visualization: \code{\link{plot_posterior}}, \code{\link{plot_forest}}
+#'   \item Reporting: \code{\link{generate_report}}, \code{\link{sensitivity_report}}
+#' }
+#'
+#' @docType package
+#' @name bayestrials-package
+NULL

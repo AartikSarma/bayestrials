@@ -1,0 +1,9 @@
+parameter,distribution,location,scale,lb,ub
+b_intercept,normal,0,10,,
+b_treatment,normal,0,1,,
+b_age,normal,0,2,,
+sd_center,half_cauchy,,5,0,
+b_sex,normal,0,2,,
+b_baseline,normal,0,2.5,,
+b_risk_score,normal,0,2,,
+sigma,half_cauchy,,5,0,

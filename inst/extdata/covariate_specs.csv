@@ -1,0 +1,6 @@
+variable,type,transformation,coding,reference
+age,numeric,scale,NA,NA
+sex,factor,NA,treatment,female
+center,factor,NA,NA,NA
+baseline,numeric,scale,NA,NA
+risk_score,numeric,scale,NA,NA

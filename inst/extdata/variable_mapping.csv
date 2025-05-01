@@ -1,0 +1,6 @@
+standard_name,trial1_name,trial2_name,trial3_name
+treatment,arm,trt,treatment_group
+response,outcome,resp,primary_outcome
+age,age_years,age,pt_age
+sex,gender,sex,gender
+center,site,center,site_id
