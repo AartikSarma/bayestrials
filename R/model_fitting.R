@@ -188,7 +188,25 @@ fit_model <- function(model_spec,
   formula <- build_formula(model_spec)
   
   # Build family
-  family <- paste0(model_spec$family, "(link = '", model_spec$link, "')")
+  # Use the brms family constructor functions rather than building a string
+  if (model_spec$family == "bernoulli") {
+    family <- brms::bernoulli(link = model_spec$link)
+  } else if (model_spec$family == "binomial") {
+    family <- brms::binomial(link = model_spec$link)
+  } else if (model_spec$family == "gaussian") {
+    family <- brms::gaussian(link = model_spec$link)
+  } else if (model_spec$family == "poisson") {
+    family <- brms::poisson(link = model_spec$link)
+  } else if (model_spec$family == "negbinomial") {
+    family <- brms::negbinomial(link = model_spec$link)
+  } else if (model_spec$family == "gamma") {
+    family <- brms::Gamma(link = model_spec$link)
+  } else if (model_spec$family == "weibull") {
+    family <- brms::weibull(link = model_spec$link)
+  } else {
+    # For other families, try the string approach as fallback
+    family <- paste0(model_spec$family, "(link = '", model_spec$link, "')")
+  }
   
   # Store data info
   data_info <- list(
