@@ -206,9 +206,8 @@ fit_model <- function(model_spec,
   log_message("Fitting model...", level = "info")
   
   model <- tryCatch({
-    # Ensure seed is a single integer for brms::brm
-    brm_seed <- if (!is.null(seed)) as.integer(seed)[1] else NULL
-    
+    # Don't pass seed directly to brms::brm, just set it globally before
+    # This avoids issues with seed coercion in brms
     brms::brm(
       formula = formula,
       data = data,
@@ -217,7 +216,7 @@ fit_model <- function(model_spec,
       chains = chains,
       cores = cores,
       iter = iter,
-      seed = brm_seed,
+      # seed parameter removed
       control = control,
       silent = 2
     )
