@@ -2,7 +2,7 @@ Package: bayestrials
 Title: A Robust Framework for Bayesian Clinical Trial Reanalysis
 Version: 0.1.0
 Authors@R: 
-    person("Your", "Name", email = "your.email@example.com", role = c("aut", "cre"))
+    person("Aartik", "Sarma", email = "aartik.sarma@ucsf.edu", role = c("aut", "cre"))
 Description: A comprehensive R package designed for Bayesian reanalysis of clinical trials,
     combining the statistical power of 'brms' with the workflow efficiency of 'tidyverse'.
     The package enables systematic model specification, flexible parameter definition,

@@ -18,7 +18,7 @@ You can install the development version of bayestrials from GitHub:
 
 ```r
 # install.packages("devtools")
-devtools::install_github("username/bayestrials")
+devtools::install_github("AartikSarma/bayestrials")
 ```
 
 ## Basic Usage
@@ -119,10 +119,10 @@ If you use `bayestrials` in your research, please cite:
 ```
 @Manual{bayestrials,
   title = {bayestrials: A Robust Framework for Bayesian Clinical Trial Reanalysis},
-  author = {Your Name},
+  author = {Aartik Sarma},
   year = {2025},
   note = {R package version 0.1.0},
-  url = {https://github.com/username/bayestrials},
+  url = {https://github.com/AartikSarma/bayestrials},
 }
 ```
 
