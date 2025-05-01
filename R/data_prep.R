@@ -308,9 +308,13 @@ auto_detect_variables <- function(trial_list, existing_mapping = NULL, standard 
     
     # If standard variable not in mapping, add it
     if (!std_var %in% existing_mapping$standard_name) {
-      existing_mapping <- rbind(existing_mapping, 
-                               data.frame(standard_name = std_var, 
-                                         stringsAsFactors = FALSE))
+      # Create a new row with the same columns as existing_mapping
+      new_row <- data.frame(matrix(NA, nrow = 1, ncol = ncol(existing_mapping)))
+      names(new_row) <- names(existing_mapping)
+      new_row$standard_name <- std_var
+      
+      # Add the new row
+      existing_mapping <- rbind(existing_mapping, new_row)
     }
     
     # For each trial, find variables matching patterns
