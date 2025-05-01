@@ -10,7 +10,7 @@ Description: A comprehensive R package designed for Bayesian reanalysis of clini
 License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
-RoxygenNote: 7.2.3
+RoxygenNote: 7.3.2
 Imports:
     brms (>= 2.18.0),
     rstan (>= 2.26.0),
