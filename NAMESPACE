@@ -4,7 +4,7 @@
 exportPattern("^[[:alpha:]][[:alnum:]\\._]*")
 
 # Import required packages
-import(brms)
+import(brms, except = c("rstudent_t", "dstudent_t", "qstudent_t", "pstudent_t"))
 import(tidybayes)
 
 importFrom(dplyr, filter, select, mutate, group_by, ungroup, summarize, arrange, left_join, inner_join)
