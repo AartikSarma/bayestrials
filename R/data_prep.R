@@ -526,16 +526,21 @@ preprocess_data <- function(data,
       coding <- specs$coding[i]
       reference <- if ("reference" %in% names(specs)) specs$reference[i] else NA
       
+      # First ensure the variable is a factor
+      if (!is.factor(processed[[var_name]])) {
+        processed[[var_name]] <- as.factor(processed[[var_name]])
+      }
+      
       if (coding == "treatment") {
-        processed[[var_name]] <- stats::contrasts(processed[[var_name]], contrasts = FALSE, sparse = FALSE)
-        contrasts(processed[[var_name]]) <- contr.treatment(nlevels(processed[[var_name]]))
-        var_changes$coding <- "treatment contrasts"
-        
         # Set reference level if provided
         if (!is.na(reference) && reference %in% levels(processed[[var_name]])) {
           processed[[var_name]] <- relevel(processed[[var_name]], ref = reference)
           var_changes$reference <- reference
         }
+        
+        # Set contrasts but don't replace the variable with the contrast matrix
+        contrasts(processed[[var_name]]) <- contr.treatment(nlevels(processed[[var_name]]))
+        var_changes$coding <- "treatment contrasts"
       } else if (coding == "sum") {
         contrasts(processed[[var_name]]) <- contr.sum(nlevels(processed[[var_name]]))
         var_changes$coding <- "sum contrasts"
@@ -547,6 +552,8 @@ preprocess_data <- function(data,
         dummies <- model.matrix(~ processed[[var_name]] - 1)
         # Use proper names
         colnames(dummies) <- paste0(var_name, "_", levels(processed[[var_name]]))
+        # Convert to data frame before binding
+        dummies <- as.data.frame(dummies)
         processed <- cbind(processed, dummies)
         var_changes$coding <- "dummy variables"
       }
