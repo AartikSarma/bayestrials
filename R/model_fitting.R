@@ -246,17 +246,53 @@ fit_model <- function(model_spec,
   }, silent = TRUE)
   
   # Check if we had a build tools error
-  if (inherits(build_tools_check, "try-error") && 
-      (grepl("tools for compilation", build_tools_check[1]) || 
-       grepl("C++ compiler", build_tools_check[1]) ||
-       grepl("cannot compile", build_tools_check[1]))) {
-    error_msg <- paste(
-      "Stan/brms requires additional build tools to compile models.",
-      "For Mac, install the Xcode Command Line Tools. For Windows, install Rtools.",
-      "See https://mc-stan.org/docs/stan-users-guide/prereqs.html for installation instructions."
-    )
-    log_message(error_msg, level = "error")
-    return(NULL)
+  if (inherits(build_tools_check, "try-error")) {
+    # General pattern matching for missing build tools
+    has_build_error <- grepl("tools for compilation", build_tools_check[1]) || 
+                       grepl("C++ compiler", build_tools_check[1]) ||
+                       grepl("cannot compile", build_tools_check[1]) ||
+                       grepl("'cmath' file not found", build_tools_check[1]) ||
+                       grepl("make: \\*\\*\\* .*Error", build_tools_check[1])
+    
+    if (has_build_error) {
+      # Detect OS for more specific instructions
+      is_mac <- Sys.info()["sysname"] == "Darwin"
+      is_windows <- .Platform$OS.type == "windows"
+      
+      if (is_mac) {
+        error_msg <- paste(
+          "macOS: Missing C++ compiler tools needed by Stan/brms.",
+          "To install required tools, open Terminal and run: xcode-select --install",
+          "Then follow the prompts to install the Xcode Command Line Tools.",
+          "After installation completes, restart R/RStudio and try again.",
+          "For detailed help, see: https://mac.r-project.org/tools/"
+        )
+      } else if (is_windows) {
+        r_version <- paste0(R.Version()$major, ".", substr(R.Version()$minor, 1, 1))
+        error_msg <- paste(
+          "Windows: Missing Rtools needed by Stan/brms.",
+          paste0("For R ", r_version, ", download and install Rtools from:"),
+          "https://cran.r-project.org/bin/windows/Rtools/",
+          "Ensure you check the 'Add Rtools to system PATH' option during installation.",
+          "After installation completes, restart R/RStudio and try again."
+        )
+      } else {
+        error_msg <- paste(
+          "Linux: Missing C++ compiler tools needed by Stan/brms.",
+          "For Ubuntu/Debian, run: sudo apt-get install build-essential",
+          "For Fedora/RHEL, run: sudo dnf install gcc-c++ make",
+          "After installation completes, restart R/RStudio and try again.",
+          "See https://mc-stan.org/docs/stan-users-guide/prereqs.html for more details."
+        )
+      }
+      
+      log_message(error_msg, level = "error")
+      return(NULL)
+    } else {
+      # Other non-build related error, just log it
+      log_message(paste("Error in test compilation:", build_tools_check[1]), level = "error")
+      # But don't exit, maybe brm will still work
+    }
   }
   
   # If we passed the build tools check, continue with model fitting
@@ -281,7 +317,17 @@ fit_model <- function(model_spec,
     # Keep going, don't stop on warnings
     invokeRestart("muffleWarning")
   }, error = function(e) {
-    log_message(paste("Error fitting model:", e$message), level = "error")
+    # Check specifically for cmath errors that might appear during the actual model fitting
+    if (grepl("'cmath' file not found", e$message) || 
+        grepl("make: \\*\\*\\* .*Error", e$message)) {
+      log_message(paste(
+        "macOS compiler error: Missing Xcode Command Line Tools.",
+        "Open Terminal and run: xcode-select --install",
+        "Then restart R/RStudio and try again."
+      ), level = "error")
+    } else {
+      log_message(paste("Error fitting model:", e$message), level = "error")
+    }
     return(NULL)
   })
   
