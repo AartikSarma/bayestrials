@@ -1,12 +1,175 @@
-#' Generate a report from a Bayesian model
+#' Generate comprehensive clinical trial analysis reports
+#'
+#' Creates publication-ready reports from Bayesian clinical trial models with 
+#' automated statistical summaries, visualizations, and clinical interpretations.
+#' Essential for clinical documentation, investigator communications, and 
+#' scientific publications. Supports multiple output formats and customizable
+#' report templates.
+#'
+#' @param model A BayesianModel object from \code{\link{fit_model}} containing
+#'   fitted results. Model must have completed MCMC sampling with convergence.
+#'   The report will automatically extract:
+#'   \itemize{
+#'     \item Model specification and formula
+#'     \item Posterior parameter estimates with credible intervals
+#'     \item Treatment effect summaries and probabilities
+#'     \item Convergence diagnostics and model fit assessments
+#'   }
+#'   
+#' @param template Character string specifying the report template. Available options:
+#'   \itemize{
+#'     \item \code{"basic_report"} - Standard analysis report with treatment effects,
+#'       posterior summaries, and model diagnostics. Suitable for most clinical trials.
+#'     \item \code{"diagnostics_report"} - Detailed convergence and model fit assessment.
+#'       Essential for model validation and troubleshooting.
+#'     \item \code{"sensitivity_report"} - Template for sensitivity analysis results.
+#'       Use with sensitivity analysis outputs.
+#'     \item \code{"subgroup_report"} - Template for effect modifier analysis.
+#'       Use with subgroup analysis results.
+#'   }
+#'   Custom templates can be created following R Markdown parameterized report format.
+#'   
+#' @param output_file Character string specifying output file path (optional).
+#'   If not provided, automatically generates timestamped filename:
+#'   \itemize{
+#'     \item Format: \code{[model_name]_report_[YYYYMMDD_HHMMSS].[extension]}
+#'     \item Example: \code{"efficacy_model_report_20241201_143022.html"}
+#'   }
+#'   Include full path if saving to specific directory.
+#'   
+#' @param format Character string specifying output format:
+#'   \itemize{
+#'     \item \code{"html"} - Interactive HTML report with embedded plots (default).
+#'       Best for sharing via email or web platforms. Self-contained.
+#'     \item \code{"pdf"} - Publication-ready PDF document. Requires LaTeX installation.
+#'       Ideal for clinical publications and formal documentation.
+#'     \item \code{"word"} - Microsoft Word document for collaborative editing.
+#'       Compatible with institutional review processes.
+#'   }
+#'   
+#' @param include_plots Logical indicating whether to include visualizations:
+#'   \itemize{
+#'     \item \code{TRUE} - Includes posterior distribution plots, model fit diagnostics,
+#'       and treatment effect visualizations (recommended)
+#'     \item \code{FALSE} - Text-only report with tables and numerical summaries
+#'   }
+#'   
+#' @param include_diagnostics Logical indicating whether to include MCMC diagnostics:
+#'   \itemize{
+#'     \item \code{TRUE} - Includes R-hat values, effective sample sizes, 
+#'       divergent transitions, and convergence assessments (recommended)
+#'     \item \code{FALSE} - Omits technical diagnostic information
+#'   }
+#'
+#' @return Character string with path to the generated report file.
+#'   File is ready for sharing, submission, or publication.
+#'
+#' @details
+#' \strong{Report Contents:}
 #' 
-#' @param model A BayesianModel object
-#' @param template Template to use for report
-#' @param output_file Path to output file
-#' @param format Output format (html, pdf, word)
-#' @param include_plots Logical indicating whether to include plots
-#' @param include_diagnostics Logical indicating whether to include diagnostics
-#' @return Path to the generated report
+#' \strong{Basic Report Template Includes:}
+#' \itemize{
+#'   \item Model specification summary (formula, family, link function)
+#'   \item Posterior parameter estimates with 95% credible intervals
+#'   \item Treatment effect estimates with probability of benefit
+#'   \item Model convergence diagnostics (if requested)
+#'   \item Posterior distribution visualizations (if requested)
+#'   \item Model fit assessment plots
+#'   \item Clinical interpretation and conclusions
+#' }
+#' 
+#' \strong{Clinical Communication Features:}
+#' \itemize{
+#'   \item Automatic calculation of probability of positive treatment effect
+#'   \item Clinical significance thresholds and interpretations
+#'   \item Credible intervals (not confidence intervals) for Bayesian results
+#'   \item Clear differentiation between statistical and clinical significance
+#' }
+#' 
+#' \strong{Quality Assurance:}
+#' \itemize{
+#'   \item Timestamped generation for audit trails
+#'   \item Reproducible analysis documentation
+#'   \item Model diagnostic requirements for validation
+#'   \item Clear statistical methodology descriptions
+#' }
+#' 
+#' \strong{Technical Requirements:}
+#' \itemize{
+#'   \item Requires rmarkdown package for report generation
+#'   \item PDF output requires LaTeX installation (TinyTeX recommended)
+#'   \item HTML output is self-contained with embedded images
+#'   \item Word output compatible with Office 2016+
+#' }
+#'
+#' @examples
+#' \dontrun{
+#' # Fit a clinical trial model
+#' data(synthetic_trial_data)
+#' priors <- default_priors()
+#' model_spec <- create_model_spec(
+#'   outcome ~ treatment + age + sex + baseline_score,
+#'   family = "gaussian",
+#'   model_name = "primary_efficacy"
+#' )
+#' 
+#' model <- fit_model(model_spec, synthetic_trial_data, priors)
+#' 
+#' # Generate basic HTML report
+#' report_path <- generate_report(model)
+#' browseURL(report_path)  # Open in browser
+#' 
+#' # Generate PDF report for formal documentation
+#' pdf_report <- generate_report(
+#'   model, 
+#'   template = "basic_report",
+#'   output_file = "formal_efficacy_analysis.pdf",
+#'   format = "pdf",
+#'   include_plots = TRUE,
+#'   include_diagnostics = TRUE
+#' )
+#' 
+#' # Generate diagnostics-focused report
+#' diag_report <- generate_report(
+#'   model,
+#'   template = "diagnostics_report", 
+#'   format = "html"
+#' )
+#' 
+#' # Generate Word report for clinical team review
+#' clinical_report <- generate_report(
+#'   model,
+#'   output_file = "clinical_summary.docx",
+#'   format = "word",
+#'   include_plots = TRUE,
+#'   include_diagnostics = FALSE  # Simplified for clinical audience
+#' )
+#' 
+#' # Batch report generation for multiple models
+#' models_list <- list(
+#'   primary = primary_model,
+#'   safety = safety_model,
+#'   sensitivity = sensitivity_model
+#' )
+#' 
+#' report_paths <- sapply(names(models_list), function(name) {
+#'   generate_report(
+#'     models_list[[name]],
+#'     output_file = paste0(name, "_analysis.html"),
+#'     format = "html"
+#'   )
+#' })
+#' 
+#' # Verify all reports generated successfully
+#' all(file.exists(report_paths))
+#' }
+#'
+#' @seealso 
+#' \code{\link{fit_model}} for fitting Bayesian models,
+#' \code{\link{sensitivity_report}} for sensitivity analysis reports,
+#' \code{\link{subgroup_report}} for subgroup analysis reports,
+#' \code{\link{reproducibility_report}} for workflow documentation
+#'
 #' @export
 generate_report <- function(model,
                            template = "basic_report",
@@ -1128,13 +1291,129 @@ Report generated with `bayestrials` on `r format(params$timestamp, "%Y-%m-%d %H:
   }
 }
 
-#' Generate a sensitivity report
+#' Generate comprehensive sensitivity analysis reports
+#'
+#' Creates detailed reports documenting the robustness of Bayesian clinical trial 
+#' results across different modeling assumptions. Essential for clinical documentation
+#' to demonstrate that conclusions are not overly dependent on specific prior 
+#' specifications, model choices, or analysis decisions.
+#'
+#' @param sensitivity_results A sensitivity_results object from 
+#'   \code{\link{run_sensitivity_analyses}}. Must contain comparison results
+#'   across different analysis scenarios:
+#'   \itemize{
+#'     \item \strong{Prior sensitivity:} Results from different prior specifications
+#'     \item \strong{Model sensitivity:} Results from alternative model structures
+#'     \item \strong{Missing data sensitivity:} Results from different imputation approaches
+#'     \item \strong{Outlier sensitivity:} Results with/without influential observations
+#'   }
+#'   
+#' @param output_file Character string specifying output file path (optional).
+#'   If not provided, automatically generates timestamped filename:
+#'   \code{"sensitivity_analysis_[YYYYMMDD_HHMMSS].[extension]"}
+#'   
+#' @param format Character string specifying output format:
+#'   \itemize{
+#'     \item \code{"html"} - Interactive report with embedded plots (default)
+#'     \item \code{"pdf"} - Publication-ready document for clinical publications
+#'     \item \code{"word"} - Editable document for collaborative review
+#'   }
+#'   
+#' @param include_plots Logical indicating whether to include visualizations:
+#'   \itemize{
+#'     \item \code{TRUE} - Forest plots comparing effect estimates across scenarios
+#'     \item \code{FALSE} - Text and tables only
+#'   }
+#'
+#' @return Character string with path to generated sensitivity analysis report.
+#'   Report includes automated assessment of result robustness based on 
+#'   percentage differences between scenarios.
+#'
+#' @details
+#' \strong{Report Content Overview:}
 #' 
-#' @param sensitivity_results Results from run_sensitivity_analyses
-#' @param output_file Path to output file
-#' @param format Output format (html, pdf, word)
-#' @param include_plots Logical indicating whether to include plots
-#' @return Path to the generated report
+#' \strong{Sensitivity Assessment Criteria:}
+#' \itemize{
+#'   \item \strong{Robust (< 10% difference):} Results minimally affected by assumptions
+#'   \item \strong{Moderate sensitivity (10-30%):} Some influence of assumptions
+#'   \item \strong{High sensitivity (> 30%):} Strong dependence on assumptions
+#' }
+#' 
+#' \strong{Clinical Interpretation Guidelines:}
+#' \itemize{
+#'   \item Results robust to prior specifications indicate strong data informativeness
+#'   \item Model sensitivity highlights importance of structural assumptions
+#'   \item Missing data sensitivity reveals potential bias from incomplete observations
+#'   \item Consistent directions of effect across scenarios strengthen conclusions
+#' }
+#' 
+#' \strong{Clinical Applications:}
+#' \itemize{
+#'   \item Sensitivity analyses recommended for key efficacy and safety endpoints
+#'   \item Emphasize robustness to prior assumptions in clinical interpretation
+#'   \item Document pre-specified sensitivity scenarios in statistical analysis plan
+#'   \item Include discussion of clinical meaningfulness of observed variations
+#' }
+#'
+#' @examples
+#' \dontrun{
+#' # Run comprehensive sensitivity analysis
+#' data(synthetic_trial_data)
+#' base_model_spec <- create_model_spec(
+#'   outcome ~ treatment + age + sex,
+#'   family = "gaussian"
+#' )
+#' 
+#' # Define prior sensitivity scenarios
+#' prior_sets <- list(
+#'   neutral = default_priors("neutral"),
+#'   skeptical = default_priors("skeptical"),
+#'   optimistic = default_priors("optimistic")
+#' )
+#' 
+#' # Run sensitivity analysis
+#' sensitivity_results <- run_sensitivity_analyses(
+#'   model_spec = base_model_spec,
+#'   data = synthetic_trial_data,
+#'   scenarios = list(
+#'     prior_sensitivity = prior_sets,
+#'     missing_data = c("complete_case", "imputation")
+#'   )
+#' )
+#' 
+#' # Generate comprehensive sensitivity report
+#' sensitivity_report_path <- sensitivity_report(
+#'   sensitivity_results,
+#'   output_file = "efficacy_sensitivity_analysis.html",
+#'   format = "html",
+#'   include_plots = TRUE
+#' )
+#' 
+#' # Open report in browser
+#' browseURL(sensitivity_report_path)
+#' 
+#' # Generate PDF for formal documentation
+#' formal_sensitivity <- sensitivity_report(
+#'   sensitivity_results,
+#'   output_file = "formal_sensitivity_analysis.pdf",
+#'   format = "pdf"
+#' )
+#' 
+#' # Generate simplified version for clinical team
+#' clinical_sensitivity <- sensitivity_report(
+#'   sensitivity_results,
+#'   output_file = "clinical_sensitivity_summary.word",
+#'   format = "word",
+#'   include_plots = FALSE  # Tables only for easier editing
+#' )
+#' }
+#'
+#' @seealso 
+#' \code{\link{run_sensitivity_analyses}} for conducting sensitivity analyses,
+#' \code{\link{generate_report}} for standard analysis reports,
+#' \code{\link{compare_models}} for model comparison utilities,
+#' \code{\link{plot_sensitivity}} for sensitivity visualization
+#'
 #' @export
 sensitivity_report <- function(sensitivity_results,
                               output_file = NULL,
@@ -1159,13 +1438,149 @@ sensitivity_report <- function(sensitivity_results,
   return(report_path)
 }
 
-#' Generate a subgroup analysis report
+#' Generate comprehensive subgroup analysis reports
+#'
+#' Creates detailed reports for effect modifier analysis and subgroup investigations
+#' in clinical trials. Essential for personalized medicine applications and 
+#' clinical publications exploring differential treatment effects across patient
+#' populations. Includes statistical testing, clinical interpretation, and
+#' credibility assessments.
+#'
+#' @param effect_results An effect_modifier_results object from 
+#'   \code{\link{identify_effect_modifiers}} containing:
+#'   \itemize{
+#'     \item Treatment effect estimates by subgroup
+#'     \item Interaction test results and p-values
+#'     \item Effect modifier credibility assessments
+#'     \item Subgroup sample sizes and clinical characteristics
+#'   }
+#'   Must include results from systematic effect modifier analysis.
+#'   
+#' @param output_file Character string specifying output file path (optional).
+#'   If not provided, automatically generates timestamped filename:
+#'   \code{"subgroup_analysis_[YYYYMMDD_HHMMSS].[extension]"}
+#'   
+#' @param format Character string specifying output format:
+#'   \itemize{
+#'     \item \code{"html"} - Interactive report with embedded forest plots (default)
+#'     \item \code{"pdf"} - Publication-ready document with statistical tables
+#'     \item \code{"word"} - Editable document for collaborative review and clinical comments
+#'   }
+#'   
+#' @param include_plots Logical indicating whether to include visualizations:
+#'   \itemize{
+#'     \item \code{TRUE} - Forest plots, interaction plots, and effect modifier visualizations
+#'     \item \code{FALSE} - Statistical tables and text summaries only
+#'   }
+#'
+#' @return Character string with path to generated subgroup analysis report.
+#'   Report includes automated credibility assessments and statistically-compliant
+#'   interpretation guidelines.
+#'
+#' @details
+#' \strong{Subgroup Analysis Reporting Standards:}
 #' 
-#' @param effect_results Results from identify_effect_modifiers
-#' @param output_file Path to output file
-#' @param format Output format (html, pdf, word)
-#' @param include_plots Logical indicating whether to include plots
-#' @return Path to the generated report
+#' \strong{Credibility Assessment Framework:}
+#' \itemize{
+#'   \item \strong{Pre-specification:} Were subgroups defined before data analysis?
+#'   \item \strong{Statistical significance:} Are interaction tests statistically significant?
+#'   \item \strong{Clinical plausibility:} Is the biological mechanism reasonable?
+#'   \item \strong{Consistency:} Are findings consistent across related endpoints?
+#'   \item \strong{Effect magnitude:} Is the difference clinically meaningful?
+#' }
+#' 
+#' \strong{Statistical Guidelines:}
+#' \itemize{
+#'   \item Subgroup analyses should be pre-specified with clinical rationale
+#'   \item Multiple testing adjustments required for exploratory analyses
+#'   \item Distinguish between confirmatory and exploratory subgroup analyses
+#'   \item Report methodology and multiplicity considerations
+#' }
+#' 
+#' \strong{Clinical Interpretation Guidelines:}
+#' \itemize{
+#'   \item \strong{Qualitative interactions:} Treatment beneficial in some, harmful in others
+#'   \item \strong{Quantitative interactions:} Treatment beneficial in all, but magnitude varies
+#'   \item \strong{Statistical vs. clinical significance:} Consider both p-values and effect sizes
+#'   \item \strong{External validity:} Assess generalizability to broader patient populations
+#' }
+#' 
+#' \strong{Report Content Structure:}
+#' \itemize{
+#'   \item Executive summary with key findings
+#'   \item Statistical methodology and multiple testing approach
+#'   \item Subgroup characteristics and baseline comparisons
+#'   \item Forest plots with confidence intervals
+#'   \item Formal interaction tests and p-values
+#'   \item Credibility assessment using established criteria
+#'   \item Clinical interpretation and recommendations
+#' }
+#'
+#' @examples
+#' \dontrun{
+#' # Conduct comprehensive effect modifier analysis
+#' data(synthetic_trial_data)
+#' model_spec <- create_model_spec(
+#'   outcome ~ treatment * age + treatment * sex + baseline_score,
+#'   family = "gaussian"
+#' )
+#' 
+#' priors <- default_priors()
+#' fitted_model <- fit_model(model_spec, synthetic_trial_data, priors)
+#' 
+#' # Identify potential effect modifiers
+#' effect_modifier_results <- identify_effect_modifiers(
+#'   model = fitted_model,
+#'   data = synthetic_trial_data,
+#'   treatment_var = "treatment",
+#'   modifier_vars = c("age", "sex", "baseline_severity")
+#' )
+#' 
+#' # Generate comprehensive subgroup analysis report
+#' subgroup_report_path <- subgroup_report(
+#'   effect_modifier_results,
+#'   output_file = "subgroup_efficacy_analysis.html",
+#'   format = "html",
+#'   include_plots = TRUE
+#' )
+#' 
+#' # View report
+#' browseURL(subgroup_report_path)
+#' 
+#' # Generate PDF for formal documentation
+#' formal_subgroup <- subgroup_report(
+#'   effect_modifier_results,
+#'   output_file = "formal_subgroup_analysis.pdf",
+#'   format = "pdf"
+#' )
+#' 
+#' # Pre-specified vs. exploratory subgroup analyses
+#' prespecified_modifiers <- c("age_group", "sex")  # Pre-specified in SAP
+#' exploratory_modifiers <- c("biomarker_level", "comorbidity_score")  # Exploratory
+#' 
+#' # Run separate analyses
+#' prespec_results <- identify_effect_modifiers(
+#'   fitted_model, data, "treatment", prespecified_modifiers,
+#'   analysis_type = "confirmatory"
+#' )
+#' 
+#' exploratory_results <- identify_effect_modifiers(
+#'   fitted_model, data, "treatment", exploratory_modifiers,
+#'   analysis_type = "exploratory",
+#'   adjust_p_values = TRUE  # Multiple testing correction
+#' )
+#' 
+#' # Generate separate reports
+#' subgroup_report(prespec_results, "prespecified_subgroups.html")
+#' subgroup_report(exploratory_results, "exploratory_subgroups.html")
+#' }
+#'
+#' @seealso 
+#' \code{\link{identify_effect_modifiers}} for conducting subgroup analyses,
+#' \code{\link{assess_subgroup_credibility}} for credibility assessment,
+#' \code{\link{plot_interaction}} for interaction visualizations,
+#' \code{\link{plot_forest}} for subgroup forest plots
+#'
 #' @export
 subgroup_report <- function(effect_results,
                            output_file = NULL,
@@ -1190,12 +1605,135 @@ subgroup_report <- function(effect_results,
   return(report_path)
 }
 
-#' Generate a reproducibility report
+#' Generate reproducibility and audit trail reports
+#'
+#' Creates detailed documentation of analysis workflow, computational environment,
+#' and reproducibility information for clinical trial analyses. Essential for 
+#' clinical documentation, audit trails, and ensuring analysis transparency.
+#' Documents all analysis steps, package versions, and computational parameters.
+#'
+#' @param workflow AnalysisWorkflow object from \code{\link{capture_workflow}}
+#'   or character string with path to saved workflow file. Contains:
+#'   \itemize{
+#'     \item Complete analysis steps with function calls and parameters
+#'     \item Package versions and computational environment details
+#'     \item Data checksums and processing steps
+#'     \item Model specifications and prior assumptions
+#'     \item Results and intermediate outputs
+#'   }
+#'   
+#' @param format Character string specifying output format:
+#'   \itemize{
+#'     \item \code{"html"} - Self-contained report with embedded metadata (default)
+#'     \item \code{"pdf"} - Formal document suitable for clinical archives
+#'     \item \code{"word"} - Editable format for collaborative review
+#'   }
+#'   
+#' @param verify_packages Logical indicating whether to verify current package
+#'   versions against workflow requirements:
+#'   \itemize{
+#'     \item \code{TRUE} - Checks version compatibility and flags differences (recommended)
+#'     \item \code{FALSE} - Documents workflow without verification
+#'   }
+#'
+#' @return Character string with path to generated reproducibility report.
+#'   Report serves as complete audit trail for quality assurance.
+#'
+#' @details
+#' \strong{Reproducibility Documentation Standards:}
 #' 
-#' @param workflow AnalysisWorkflow object or path to workflow file
-#' @param format Output format (html, pdf, word)
-#' @param verify_packages Logical indicating whether to verify package versions
-#' @return Path to the generated report
+#' \strong{Computational Environment:}
+#' \itemize{
+#'   \item R version and platform information
+#'   \item Complete package versions with checksums
+#'   \item Random seed documentation for MCMC sampling
+#'   \item Hardware specifications and execution time
+#' }
+#' 
+#' \strong{Analysis Workflow:}
+#' \itemize{
+#'   \item Step-by-step function calls with all parameters
+#'   \item Data preprocessing and transformation steps
+#'   \item Model specification and prior assumptions
+#'   \item Convergence diagnostics and model validation
+#' }
+#' 
+#' \strong{Quality Assurance:}
+#' \itemize{
+#'   \item Data integrity checks and validation
+#'   \item Model convergence assessments
+#'   \item Results consistency verification
+#'   \item Error handling and exception documentation
+#' }
+#' 
+#' \strong{Documentation Standards:}
+#' \itemize{
+#'   \item Electronic records compliance for clinical trials
+#'   \item Statistical principles documentation
+#'   \item Software validation and assurance guidelines
+#'   \item Audit trail requirements for quality assurance
+#' }
+#'
+#' @examples
+#' \dontrun{
+#' # Initialize reproducibility tracking
+#' workflow <- initialize_reproducibility("clinical_trial_analysis")
+#' 
+#' # Capture analysis steps
+#' workflow <- add_step(workflow, "data_prep", "load_clinical_trial", 
+#'                     list(file = "trial_data.csv"))
+#' workflow <- add_step(workflow, "model_spec", "create_model_spec",
+#'                     list(formula = "outcome ~ treatment + age"))
+#' workflow <- add_step(workflow, "model_fit", "fit_model",
+#'                     list(chains = 4, iter = 2000))
+#' 
+#' # Generate reproducibility report
+#' repro_report <- reproducibility_report(
+#'   workflow,
+#'   format = "html",
+#'   verify_packages = TRUE
+#' )
+#' 
+#' # View reproducibility documentation
+#' browseURL(repro_report)
+#' 
+#' # Generate audit trail for formal documentation
+#' audit_trail <- reproducibility_report(
+#'   workflow,
+#'   format = "pdf",
+#'   verify_packages = TRUE
+#' )
+#' 
+#' # Load and document previous analysis
+#' saved_workflow <- load_workflow("previous_analysis.json")
+#' historical_report <- reproducibility_report(
+#'   saved_workflow,
+#'   format = "word",
+#'   verify_packages = FALSE  # Historical analysis
+#' )
+#' 
+#' # Comprehensive project documentation
+#' project_workflow <- capture_workflow(
+#'   analysis_steps = list(
+#'     data_processing = data_processing_steps,
+#'     model_fitting = model_fitting_steps,
+#'     sensitivity_analysis = sensitivity_steps
+#'   ),
+#'   save_path = "complete_analysis_workflow.json"
+#' )
+#' 
+#' final_documentation <- reproducibility_report(
+#'   project_workflow,
+#'   format = "pdf"
+#' )
+#' }
+#'
+#' @seealso 
+#' \code{\link{initialize_reproducibility}} for starting workflow tracking,
+#' \code{\link{capture_workflow}} for documenting analysis steps,
+#' \code{\link{save_workflow}} and \code{\link{load_workflow}} for workflow persistence,
+#' \code{\link{restore_analysis}} for reproducing previous analyses
+#'
 #' @export
 reproducibility_report <- function(workflow,
                                  format = c("html", "pdf", "word"),

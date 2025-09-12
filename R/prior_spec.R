@@ -48,16 +48,155 @@ print.PriorSpecification <- function(x, ...) {
   invisible(x)
 }
 
-#' Add a prior to a PriorSpecification
+#' Add a prior specification for a model parameter
+#'
+#' This function adds a prior distribution specification to an existing 
+#' PriorSpecification object. The prior will be applied to the specified 
+#' parameter during model fitting. This is essential for Bayesian analysis 
+#' as it encodes your beliefs about parameter values before seeing the data.
+#'
+#' @param prior_spec A PriorSpecification object created by \code{\link{create_prior_spec}}
+#'   or \code{\link{default_priors}}. This object stores all prior specifications
+#'   for your model parameters.
+#'   
+#' @param parameter Character string specifying the name of the parameter to 
+#'   set a prior for. This should match the parameter names in your model 
+#'   specification. Common examples:
+#'   \itemize{
+#'     \item \code{"Intercept"} - Model intercept/baseline effect
+#'     \item \code{"treatment"} - Main treatment effect 
+#'     \item \code{"age"} - Continuous covariate effect
+#'     \item \code{"groupB"} - Factor level effect (relative to reference)
+#'     \item \code{"sigma"} - Residual standard deviation (for Gaussian models)
+#'   }
+#'   
+#' @param distribution Character string specifying the prior distribution family.
+#'   Supported distributions include:
+#'   \itemize{
+#'     \item \code{"normal"} - Normal distribution N(location, scale)
+#'     \item \code{"student_t"} - Student's t-distribution with df=3
+#'     \item \code{"cauchy"} - Cauchy distribution (heavy-tailed)
+#'     \item \code{"half_normal"} - Half-normal (positive values only)
+#'     \item \code{"half_cauchy"} - Half-Cauchy (positive, heavy-tailed)
+#'     \item \code{"exponential"} - Exponential distribution
+#'     \item \code{"gamma"} - Gamma distribution
+#'     \item \code{"beta"} - Beta distribution (values between 0 and 1)
+#'     \item \code{"uniform"} - Uniform distribution between bounds
+#'   }
+#'   
+#' @param location Numeric value for the location parameter (mean for normal 
+#'   distributions, median for Cauchy). For:
+#'   \itemize{
+#'     \item Normal/Student-t: mean of the distribution
+#'     \item Cauchy: median of the distribution  
+#'     \item Gamma: shape parameter (when scale specified)
+#'     \item Beta: alpha parameter (when scale = beta specified)
+#'     \item Uniform: lower bound (when scale = upper bound)
+#'   }
+#'   Use \code{NA} if not applicable for the chosen distribution.
+#'   
+#' @param scale Numeric value for the scale parameter. For:
+#'   \itemize{
+#'     \item Normal/Student-t/Cauchy: standard deviation or scale
+#'     \item Half-normal/Half-Cauchy: scale parameter
+#'     \item Exponential: rate parameter (1/mean)
+#'     \item Gamma: rate parameter (when location = shape)
+#'     \item Beta: beta parameter (when location = alpha)
+#'     \item Uniform: upper bound (when location = lower bound)
+#'   }
+#'   Use \code{NA} if not applicable for the chosen distribution.
+#'   
+#' @param lb Numeric value for lower bound constraint. Only applies to 
+#'   distributions that can be truncated. Use \code{NA} for no lower bound.
+#'   This is useful for constraining parameters to positive values or 
+#'   other meaningful ranges.
+#'   
+#' @param ub Numeric value for upper bound constraint. Only applies to 
+#'   distributions that can be truncated. Use \code{NA} for no upper bound.
+#'   Combined with \code{lb}, this can constrain parameters to specific ranges.
+#'
+#' @return An updated PriorSpecification object with the new prior added.
+#'   The object maintains all existing priors and adds the new specification.
+#'   This object can be passed to \code{\link{fit_model}} for Bayesian analysis.
+#'
+#' @details
+#' \strong{Choosing Appropriate Priors:}
 #' 
-#' @param prior_spec A PriorSpecification object
-#' @param parameter Name of the parameter
-#' @param distribution Name of the distribution
-#' @param location Location parameter
-#' @param scale Scale parameter
-#' @param lb Lower bound
-#' @param ub Upper bound
-#' @return Updated PriorSpecification object
+#' \strong{For Treatment Effects:}
+#' \itemize{
+#'   \item Neutral: \code{normal(0, 1)} - no strong belief about effect size
+#'   \item Optimistic: \code{normal(0.5, 0.3)} - expecting moderate positive effect
+#'   \item Skeptical: \code{normal(0, 0.3)} - expecting small effects
+#' }
+#' 
+#' \strong{For Scale Parameters (sigma):}
+#' \itemize{
+#'   \item Conservative: \code{half_cauchy(0, 1)} - allows wide range of variability
+#'   \item Informative: \code{half_normal(0, 0.5)} - expects moderate variability
+#' }
+#' 
+#' \strong{For Intercepts:}
+#' \itemize{
+#'   \item Centered on expected baseline: \code{normal(baseline_estimate, uncertainty)}
+#'   \item Vague: \code{normal(0, 10)} - when baseline is uncertain
+#' }
+#' 
+#' \strong{Prior Sensitivity:}
+#' It's good practice to test multiple prior specifications to ensure 
+#' your conclusions are robust. The \code{bayestrials} package facilitates 
+#' this by allowing you to specify multiple prior sets and comparing results.
+#'
+#' @examples
+#' \dontrun{
+#' # Create a basic prior specification
+#' priors <- create_prior_spec()
+#' 
+#' # Add a neutral prior for treatment effect
+#' priors <- add_prior(priors, 
+#'                    parameter = "treatment", 
+#'                    distribution = "normal", 
+#'                    location = 0, 
+#'                    scale = 1)
+#' 
+#' # Add a half-Cauchy prior for residual standard deviation
+#' priors <- add_prior(priors,
+#'                    parameter = "sigma",
+#'                    distribution = "half_cauchy",
+#'                    location = 0,
+#'                    scale = 1)
+#' 
+#' # Add a bounded uniform prior
+#' priors <- add_prior(priors,
+#'                    parameter = "correlation",
+#'                    distribution = "uniform",
+#'                    location = -1,  # lower bound
+#'                    scale = 1,      # upper bound
+#'                    lb = -1,
+#'                    ub = 1)
+#' 
+#' # Add an informative prior based on previous research
+#' # Previous studies suggest effect size around 0.3 with uncertainty ±0.2
+#' priors <- add_prior(priors,
+#'                    parameter = "drug_effect",
+#'                    distribution = "normal",
+#'                    location = 0.3,
+#'                    scale = 0.2)
+#' 
+#' # Constrain a parameter to positive values only
+#' priors <- add_prior(priors,
+#'                    parameter = "baseline_rate",
+#'                    distribution = "normal",
+#'                    location = 2,
+#'                    scale = 0.5,
+#'                    lb = 0)  # Must be positive
+#' }
+#'
+#' @seealso 
+#' \code{\link{create_prior_spec}} for creating prior specification objects,
+#' \code{\link{default_priors}} for pre-defined prior sets,
+#' \code{\link{fit_model}} for using priors in model fitting,
+#' \code{\link{plot_priors}} for visualizing prior distributions
+#'
 #' @export
 add_prior <- function(prior_spec, parameter, distribution, location = NA, scale = NA, lb = NA, ub = NA) {
   if (!inherits(prior_spec, "PriorSpecification")) {

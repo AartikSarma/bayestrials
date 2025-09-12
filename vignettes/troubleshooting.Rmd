@@ -1,0 +1,638 @@
+---
+title: "Troubleshooting Guide for bayestrials"
+author: "bayestrials Team"
+date: "`r Sys.Date()`"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Troubleshooting Guide for bayestrials}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  eval = FALSE
+)
+```
+
+# Comprehensive Troubleshooting Guide
+
+This guide provides solutions to common problems encountered when using bayestrials, organized by category with step-by-step solutions.
+
+```{r setup}
+library(bayestrials)
+```
+
+## Installation and Setup Issues
+
+### Problem: Package Installation Fails
+
+**Error Messages:**
+- "compilation terminated"
+- "tools for package building"  
+- "unable to install dependencies"
+
+**Solution:**
+
+```{r install-troubleshoot}
+# Step 1: Check R version (must be 4.0+)
+R.version.string
+
+# Step 2: Update R if needed
+# Download from https://cran.r-project.org/
+
+# Step 3: Install/update core dependencies first
+dependencies <- c("rstan", "brms", "rstantools", "StanHeaders")
+for(pkg in dependencies) {
+  if(!requireNamespace(pkg, quietly = TRUE)) {
+    install.packages(pkg, repos = c("https://mc-stan.org/r-packages/", getOption("repos")))
+  }
+}
+
+# Step 4: Try bayestrials installation again
+devtools::install_github("AartikSarma/bayestrials")
+
+# Step 5: Verify installation
+library(bayestrials)
+packageVersion("bayestrials")
+```
+
+### Problem: Stan/brms Compilation Fails
+
+**Platform-Specific Solutions:**
+
+**macOS:**
+```bash
+# Terminal commands
+xcode-select --install
+# Follow installation prompts, then restart R
+
+# In R:
+```
+
+```{r macos-stan}
+# Configure compiler
+writeLines('CXX14FLAGS=-O3 -march=native -mtune=native', 
+           file = file.path(Sys.getenv("HOME"), ".R", "Makevars"))
+
+# Test compilation
+library(rstan)
+example(stan_model, package = "rstan", run.dontrun = TRUE)
+```
+
+**Windows:**
+```{r windows-stan}
+# Check Rtools installation
+Sys.which("make")
+Sys.which("gcc")
+
+# If empty, download and install Rtools
+# https://cran.r-project.org/bin/windows/Rtools/
+# Ensure "Add rtools to system PATH" is checked
+
+# Configure for Windows
+file.edit(file.path(Sys.getenv("HOME"), ".Renviron"))
+# Add: PATH="${RTOOLS40_HOME}\usr\bin;${PATH}"
+
+# Restart R and test
+library(rstan)
+```
+
+**Linux:**
+```bash
+# Ubuntu/Debian
+sudo apt update
+sudo apt install build-essential r-base-dev libv8-dev
+
+# CentOS/RHEL
+sudo yum groupinstall "Development Tools"  
+sudo yum install R-devel v8-devel
+```
+
+### Problem: Memory Issues During Installation
+
+```{r memory-install}
+# Increase memory limits
+options(repos = c(CRAN = "https://cloud.r-project.org"))
+Sys.setenv("_R_CHECK_FORCE_SUGGESTS_" = "FALSE")
+
+# Install in clean session
+if(!requireNamespace("pkgbuild", quietly = TRUE)) {
+  install.packages("pkgbuild")
+}
+
+# Build with specific memory settings
+withr::with_envvar(c("_R_CHECK_FORCE_SUGGESTS_" = "FALSE"), {
+  devtools::install_github("AartikSarma/bayestrials")
+})
+```
+
+## Model Fitting Problems
+
+### Problem: Model Won't Converge
+
+**Symptoms:**
+- Rhat > 1.01
+- Low effective sample size
+- "chains haven't mixed" warnings
+
+**Systematic Diagnosis:**
+
+```{r convergence-diagnosis}
+# Step 1: Check your model and data
+print(model_spec)
+str(data)
+summary(data)
+
+# Step 2: Look for obvious issues
+# - Extremely large/small values
+# - Missing data patterns
+# - Collinearity between predictors
+cor(data[, c("age", "baseline_score", "treatment")])
+
+# Step 3: Start with simplest model
+simple_spec <- create_model_spec(
+  outcome = "outcome_continuous",
+  predictors = "treatment",  # Just treatment
+  family = "gaussian"
+)
+
+# Simple priors
+simple_priors <- PriorSpecification()
+simple_priors <- add_prior(simple_priors, "b_treatment", "normal", 0, 2.5)
+simple_priors <- add_prior(simple_priors, "Intercept", "normal", 10, 5)
+simple_priors <- add_prior(simple_priors, "sigma", "half_cauchy", NA, 5, 0)
+
+attr(simple_spec, "priors") <- simple_priors
+```
+
+**Progressive Solutions:**
+
+```{r convergence-solutions}
+# Solution 1: More iterations
+result <- fit_model(simple_spec, data, 
+                   iter = 4000, warmup = 2000, chains = 4)
+
+# Solution 2: Better adaptation  
+result <- fit_model(simple_spec, data,
+                   control = list(adapt_delta = 0.95, max_treedepth = 12))
+
+# Solution 3: Different initialization
+result <- fit_model(simple_spec, data,
+                   init = "random",  # or custom init values
+                   init_r = 0.5)
+
+# Solution 4: Reparameterization (for complex models)
+# Center continuous predictors
+data$age_centered <- scale(data$age, center = TRUE, scale = FALSE)[,1]
+data$baseline_centered <- scale(data$baseline_score, center = TRUE, scale = FALSE)[,1]
+
+# Update model
+centered_spec <- create_model_spec(
+  outcome = "outcome_continuous", 
+  predictors = "treatment + age_centered + baseline_centered"
+)
+```
+
+### Problem: Divergent Transitions
+
+**Understanding Divergences:**
+Divergent transitions indicate the Hamiltonian Monte Carlo sampler encountered numerical problems, usually due to:
+1. Highly curved posterior geometry
+2. Poor parameterization  
+3. Inappropriate priors
+4. Data scaling issues
+
+**Solutions:**
+
+```{r divergent-solutions}
+# Solution 1: Increase adapt_delta
+result <- fit_model(model_spec, data,
+                   control = list(adapt_delta = 0.99))
+
+# Solution 2: Check prior reasonableness
+# Look at data scale first
+summary(data$outcome_continuous)  # e.g., range 5-15
+
+# Adjust priors to data scale
+reasonable_priors <- PriorSpecification()
+reasonable_priors <- add_prior(reasonable_priors, "Intercept", "normal", 10, 3)  # Center on data mean
+reasonable_priors <- add_prior(reasonable_priors, "b_treatment", "normal", 0, 2)   # Reasonable effect size
+reasonable_priors <- add_prior(reasonable_priors, "sigma", "half_cauchy", NA, 2, 0)  # Match data variability
+
+# Solution 3: Standardize predictors
+data$age_std <- scale(data$age)[,1]
+data$baseline_std <- scale(data$baseline_score)[,1]
+
+standardized_spec <- create_model_spec(
+  outcome = "outcome_continuous",
+  predictors = "treatment + age_std + baseline_std"
+)
+
+# Solution 4: Use robust family if outliers suspected
+robust_spec <- create_model_spec(
+  outcome = "outcome_continuous",
+  predictors = "treatment + age_std + baseline_std", 
+  family = "student_t"  # Heavy-tailed distribution
+)
+```
+
+### Problem: Extremely Slow Fitting
+
+```{r slow-fitting}
+# Profile the problem
+system.time({
+  test_result <- fit_model(model_spec, data[1:50, ],  # Small subset
+                          chains = 1, iter = 100)
+})
+
+# Solutions for speed:
+
+# 1. Parallel processing
+result <- fit_model(model_spec, data,
+                   cores = parallel::detectCores() - 1,
+                   chains = 4)
+
+# 2. Reduce complexity temporarily
+# Test with smaller dataset
+small_data <- data[sample(nrow(data), 200), ]
+
+# 3. Simplify model first
+basic_spec <- create_model_spec(
+  outcome = "outcome_continuous",
+  predictors = "treatment"  # Add complexity gradually
+)
+
+# 4. Consider variational inference for exploration
+vi_result <- fit_model(model_spec, data,
+                      algorithm = "meanfield",  # Faster, less accurate
+                      iter = 1000)
+
+# 5. Optimize Stan settings
+result <- fit_model(model_spec, data,
+                   control = list(
+                     adapt_engaged = TRUE,
+                     adapt_delta = 0.8,      # Don't start too high
+                     max_treedepth = 10      # Default value
+                   ))
+```
+
+## Prior Specification Issues
+
+### Problem: Don't Know What Priors to Use
+
+```{r prior-guidance}
+# Step 1: Understand your outcome scale
+summary(data$outcome_continuous)
+hist(data$outcome_continuous)
+
+# Step 2: Use weakly informative priors as starting point
+priors <- PriorSpecification()
+
+# For treatment effect - allow reasonable range
+# If outcome ranges 0-20, treatment effect might be ±5 units max
+priors <- add_prior(priors, "b_treatment", "normal", 0, 2.5)
+
+# For intercept - center near data mean with wide range
+outcome_mean <- mean(data$outcome_continuous, na.rm = TRUE)
+outcome_sd <- sd(data$outcome_continuous, na.rm = TRUE)
+priors <- add_prior(priors, "Intercept", "normal", outcome_mean, outcome_sd * 2)
+
+# For residual SD - based on outcome variability
+priors <- add_prior(priors, "sigma", "half_cauchy", NA, outcome_sd, 0)
+
+# For standardized covariates
+priors <- add_prior(priors, "b_age_std", "normal", 0, 1)  # Unit normal for standardized
+
+print(priors)
+
+# Step 3: Visualize prior implications
+plot_priors(priors, model_spec)
+```
+
+### Problem: Prior-Data Conflict
+
+```{r prior-data-conflict}
+# Diagnose prior-data conflict
+# Run prior predictive check
+prior_check <- brm(
+  build_formula(model_spec), 
+  data = data,
+  prior = to_brms_prior(priors),
+  sample_prior = "only",
+  chains = 2, iter = 500
+)
+
+# Check if prior predictions make sense
+prior_predictions <- predict(prior_check)
+summary(prior_predictions)
+
+# Compare to actual data
+summary(data$outcome_continuous)
+
+# If mismatch, adjust priors:
+# Example: Prior predicted range -100 to 200, but data is 5 to 15
+
+adjusted_priors <- PriorSpecification()
+adjusted_priors <- add_prior(adjusted_priors, "Intercept", "normal", 10, 3)  # Narrower
+adjusted_priors <- add_prior(adjusted_priors, "b_treatment", "normal", 0, 1.5)  # More conservative
+adjusted_priors <- add_prior(adjusted_priors, "sigma", "half_cauchy", NA, 2, 0)  # Smaller scale
+```
+
+### Problem: Understanding Prior Conversion
+
+```{r prior-conversion-help}
+# Check what happens to your priors
+original_priors <- PriorSpecification()
+original_priors <- add_prior(original_priors, "sigma", "half_cauchy", NA, 5, 0)
+original_priors <- add_prior(original_priors, "b_treatment", "normal", 0, 2.5)
+
+# See brms conversion
+brms_version <- to_brms_prior(original_priors)
+print(brms_version)
+
+# Understanding the conversion:
+# half_cauchy(0, 5) becomes student_t(3, 0, 5) 
+# This is mathematically equivalent for positive values
+
+# Verify equivalence by sampling
+set.seed(123)
+half_cauchy_samples <- abs(rt(1000, df = 1)) * 5  # Half of Cauchy(0, 5)
+student_t_samples <- rt(1000, df = 3) * 5         # Student-t(3, 0, 5) 
+
+# Both should have similar distributions for positive values
+summary(half_cauchy_samples)
+summary(pmax(0, student_t_samples))  # Truncate at 0
+```
+
+## Data-Related Issues
+
+### Problem: Missing Data
+
+```{r missing-data-handling}
+# Assess missingness pattern
+library(VIM)
+VIM::aggr(data, col = c('navyblue','red'), numbers = TRUE, sortVars = TRUE)
+
+# Check if data is missing completely at random (MCAR)
+library(naniar)
+naniar::vis_miss(data)
+
+# Solutions:
+
+# 1. Complete case analysis (if <5% missing)
+complete_data <- na.omit(data)
+cat("Original:", nrow(data), "Complete:", nrow(complete_data), 
+    "Lost:", nrow(data) - nrow(complete_data), "\n")
+
+# 2. Multiple imputation (if >5% missing)
+library(mice)
+imputed <- mice(data, m = 5, method = 'pmm', printFlag = FALSE)
+completed_data <- complete(imputed)
+
+# 3. Model-based handling (brms can handle some missingness)
+# Missing predictors: brms will exclude those observations
+# Missing outcomes: automatic exclusion with warning
+
+# Check what brms will do with your data
+model_result <- fit_model(model_spec, data)  # Will show warnings about excluded rows
+```
+
+### Problem: Outliers and Influential Observations
+
+```{r outlier-handling}
+# Identify potential outliers
+# 1. Visual inspection
+par(mfrow = c(2, 2))
+hist(data$outcome_continuous, main = "Outcome Distribution")
+boxplot(data$outcome_continuous, main = "Outcome Boxplot")
+plot(data$age, data$outcome_continuous, main = "Age vs Outcome")
+plot(data$treatment, data$outcome_continuous, main = "Treatment vs Outcome")
+
+# 2. Statistical identification
+# Z-score method (values > 3 SD from mean)
+outcome_z <- abs(scale(data$outcome_continuous))
+outlier_rows <- which(outcome_z > 3)
+cat("Potential outliers:", length(outlier_rows), "out of", nrow(data), "\n")
+
+# 3. Robust analysis options:
+
+# Option A: Remove outliers (with justification)
+clean_data <- data[-outlier_rows, ]
+
+# Option B: Use robust error distribution
+robust_spec <- create_model_spec(
+  outcome = "outcome_continuous",
+  predictors = "treatment + age + baseline_score",
+  family = "student_t"  # Heavy-tailed, robust to outliers
+)
+
+# Option C: Transform outcome
+# Log transform (for positive outcomes)
+if(all(data$outcome_continuous > 0, na.rm = TRUE)) {
+  data$log_outcome <- log(data$outcome_continuous)
+  
+  log_spec <- create_model_spec(
+    outcome = "log_outcome", 
+    predictors = "treatment + age + baseline_score"
+  )
+}
+
+# Option D: Winsorize extreme values
+library(DescTools)
+data$outcome_winsorized <- Winsorize(data$outcome_continuous, probs = c(0.05, 0.95))
+```
+
+### Problem: Collinearity Between Predictors
+
+```{r collinearity-handling}
+# Detect collinearity
+# Correlation matrix
+cor_matrix <- cor(data[, c("age", "baseline_score", "biomarker_level")], 
+                 use = "complete.obs")
+print(cor_matrix)
+
+# Variance Inflation Factors (VIF)
+# First fit a simple linear model
+lm_model <- lm(outcome_continuous ~ treatment + age + baseline_score + biomarker_level, 
+               data = data)
+car::vif(lm_model)  # VIF > 5 indicates problems
+
+# Solutions:
+
+# 1. Remove highly correlated predictors
+# Keep only one from highly correlated pair
+reduced_spec <- create_model_spec(
+  outcome = "outcome_continuous",
+  predictors = "treatment + age + baseline_score"  # Remove biomarker if cor > 0.8 with baseline
+)
+
+# 2. Principal component analysis
+# Create PCA of correlated predictors
+pca_vars <- data[, c("age", "baseline_score", "biomarker_level")]
+pca_result <- prcomp(pca_vars, scale = TRUE)
+data$PC1 <- pca_result$x[, 1]
+data$PC2 <- pca_result$x[, 2]
+
+pca_spec <- create_model_spec(
+  outcome = "outcome_continuous", 
+  predictors = "treatment + PC1 + PC2"
+)
+
+# 3. Regularization through priors
+# Use tighter priors on correlated predictors
+regularized_priors <- PriorSpecification()
+regularized_priors <- add_prior(regularized_priors, "b_treatment", "normal", 0, 2.5)
+regularized_priors <- add_prior(regularized_priors, "b_age", "normal", 0, 0.5)          # Tighter
+regularized_priors <- add_prior(regularized_priors, "b_baseline_score", "normal", 0, 0.5) # Tighter  
+regularized_priors <- add_prior(regularized_priors, "Intercept", "normal", 10, 5)
+regularized_priors <- add_prior(regularized_priors, "sigma", "half_cauchy", NA, 3, 0)
+```
+
+## Interpretation Issues
+
+### Problem: Understanding Bayesian Output
+
+```{r interpretation-help}
+# Extract and understand results
+result <- fit_model(model_spec, data, chains = 2, iter = 1000)
+estimates <- extract_estimates(result)
+
+# Key columns explained:
+# Estimate: Posterior mean (best point estimate)
+# Est.Error: Posterior standard deviation (uncertainty)
+# Q2.5, Q97.5: 95% credible interval bounds
+# Rhat: Convergence diagnostic (should be ≤ 1.01)
+# Bulk_ESS, Tail_ESS: Effective sample sizes (should be > 400)
+
+print(estimates)
+
+# Focus on treatment effect
+treatment_est <- estimates["b_treatment", ]
+cat("Treatment effect estimate:", round(treatment_est$Estimate, 3), "\n")
+cat("95% Credible interval: [", round(treatment_est$Q2.5, 3), ", ", 
+    round(treatment_est$Q97.5, 3), "]\n", sep = "")
+
+# Probability calculations
+posterior_samples <- extract_posterior(result, "b_treatment")
+prob_positive <- mean(posterior_samples > 0)
+prob_meaningful <- mean(posterior_samples > 1.0)  # Adjust threshold as needed
+
+cat("Probability treatment effect > 0:", round(prob_positive * 100, 1), "%\n")
+cat("Probability treatment effect > 1.0:", round(prob_meaningful * 100, 1), "%\n")
+```
+
+### Problem: Model Comparison and Selection
+
+```{r model-comparison-help}
+# Fit multiple models for comparison
+model1 <- fit_model(create_model_spec("outcome_continuous", "treatment"), data)
+model2 <- fit_model(create_model_spec("outcome_continuous", "treatment + age"), data)  
+model3 <- fit_model(create_model_spec("outcome_continuous", "treatment + age + baseline_score"), data)
+
+# Compare using information criteria
+comparison <- compare_models(list(
+  "treatment_only" = model1,
+  "treatment_age" = model2,
+  "full_model" = model3
+))
+
+print(comparison)
+
+# Interpret comparison:
+# WAIC: Widely Applicable Information Criterion (lower is better)  
+# LOO: Leave-One-Out Cross-Validation (lower is better)
+# SE: Standard error of the difference
+# ELPD_diff: Difference in expected log predictive density
+
+# Model averaging if models are close
+if(abs(comparison$waic_diff[2]) < 2 * comparison$se_diff[2]) {
+  cat("Models have similar predictive performance - consider model averaging\n")
+} else {
+  best_model <- rownames(comparison)[which.min(comparison$waic)]
+  cat("Best model:", best_model, "\n")
+}
+```
+
+## Getting Additional Help
+
+### Diagnostic Checklist
+
+Before asking for help, run through this checklist:
+
+```{r diagnostic-checklist}
+# System information
+cat("=== System Information ===\n")
+sessionInfo()
+cat("\nbayestrials version:", packageVersion("bayestrials"), "\n")
+
+# Data information  
+cat("\n=== Data Summary ===\n")
+str(data)
+cat("Missing values:", sum(is.na(data)), "\n")
+cat("Outcome range:", range(data$outcome_continuous, na.rm = TRUE), "\n")
+
+# Model information
+cat("\n=== Model Specification ===\n")
+print(model_spec)
+validate_model_spec(model_spec)
+
+# Prior information
+if(!is.null(attr(model_spec, "priors"))) {
+  cat("\n=== Prior Specifications ===\n")
+  print(attr(model_spec, "priors"))
+  
+  cat("\n=== brms Prior Conversion ===\n")
+  print(to_brms_prior(attr(model_spec, "priors")))
+}
+
+# Fitting diagnostics (if model was fitted)
+if(exists("result") && !is.null(result)) {
+  cat("\n=== Model Diagnostics ===\n")
+  diagnostics <- check_diagnostics(result)
+  print(diagnostics)
+}
+```
+
+### Preparing a Minimal Reproducible Example
+
+```{r minimal-example}
+# Create minimal example for bug reports
+set.seed(123)
+minimal_data <- data.frame(
+  treatment = factor(rep(c("A", "B"), each = 25)),
+  age = rnorm(50, 65, 10),
+  outcome = rnorm(50, 10, 3)
+)
+
+minimal_spec <- create_model_spec(
+  outcome = "outcome",
+  predictors = "treatment + age", 
+  family = "gaussian"
+)
+
+minimal_priors <- PriorSpecification()
+minimal_priors <- add_prior(minimal_priors, "b_treatmentB", "normal", 0, 2)
+minimal_priors <- add_prior(minimal_priors, "b_age", "normal", 0, 1)
+minimal_priors <- add_prior(minimal_priors, "Intercept", "normal", 10, 5)
+minimal_priors <- add_prior(minimal_priors, "sigma", "half_cauchy", NA, 3, 0)
+
+attr(minimal_spec, "priors") <- minimal_priors
+
+# This should reproduce your issue:
+# minimal_result <- fit_model(minimal_spec, minimal_data)
+```
+
+### Resources for Further Help
+
+1. **Package Documentation**: `?bayestrials` and function help pages
+2. **Vignettes**: `browseVignettes("bayestrials")`
+3. **brms Documentation**: https://paul-buerkner.github.io/brms/
+4. **Stan Documentation**: https://mc-stan.org/users/documentation/
+5. **GitHub Issues**: https://github.com/AartikSarma/bayestrials/issues
+
+```{r session-info}
+sessionInfo()
+```

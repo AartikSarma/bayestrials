@@ -208,16 +208,154 @@ read_model_spec <- function(model_file, prior_file = NULL, covariate_file = NULL
   return(model_list)
 }
 
-#' Create model specification programmatically
+#' Create a comprehensive model specification for Bayesian clinical trial analysis
+#'
+#' This function creates a `ModelSpecification` object that defines the structure
+#' of your Bayesian model. The specification includes the outcome variable,
+#' predictor variables, statistical family, and optional components like random
+#' effects and priors. This is typically the first step in any bayestrials analysis.
+#'
+#' @param outcome Character string specifying the name of the outcome (dependent) 
+#'   variable in your dataset. This should match exactly with a column name in 
+#'   your data frame.
+#'   
+#' @param predictors Character string specifying the predictor (independent) 
+#'   variables using standard R formula syntax. Examples:
+#'   \itemize{
+#'     \item \code{"treatment"} - Single predictor
+#'     \item \code{"treatment + age + sex"} - Multiple predictors  
+#'     \item \code{"treatment * age + sex"} - Interaction between treatment and age
+#'     \item \code{"treatment + I(age^2)"} - Non-linear age effect
+#'   }
+#'   Variable names should match columns in your dataset.
+#'   
+#' @param random_effects Character string specifying random effects using lme4 
+#'   syntax (optional). Common patterns:
+#'   \itemize{
+#'     \item \code{"(1|site)"} - Random intercepts by site
+#'     \item \code{"(treatment|site)"} - Random slopes for treatment by site
+#'     \item \code{"(1|site) + (1|patient)"} - Nested random effects
+#'   }
+#'   Leave as \code{NULL} for models without random effects.
+#'   
+#' @param family Character string specifying the statistical distribution family.
+#'   Options include:
+#'   \itemize{
+#'     \item \code{"gaussian"} - Normal distribution (default, for continuous outcomes)
+#'     \item \code{"binomial"} - Binomial distribution (for binary outcomes like success/failure)
+#'     \item \code{"poisson"} - Poisson distribution (for count data)
+#'     \item \code{"negbinomial"} - Negative binomial (for over-dispersed count data)
+#'     \item \code{"gamma"} - Gamma distribution (for positive continuous data)
+#'     \item \code{"student_t"} - Student-t distribution (robust to outliers)
+#'     \item \code{"beta"} - Beta distribution (for proportions between 0 and 1)
+#'   }
+#'   
+#' @param link Character string specifying the link function that connects the 
+#'   linear predictor to the outcome. Common combinations:
+#'   \itemize{
+#'     \item \code{"identity"} - Direct linear relationship (default for gaussian)
+#'     \item \code{"logit"} - Logistic link (default for binomial)  
+#'     \item \code{"log"} - Log link (default for poisson, also used for gamma)
+#'     \item \code{"probit"} - Probit link (alternative to logit for binary data)
+#'     \item \code{"inverse"} - Inverse link (sometimes used with gamma)
+#'   }
+#'   
+#' @param priors A `PriorSpecification` object containing prior distributions 
+#'   for model parameters (optional). If provided, these priors will be attached
+#'   to the model specification. Can also be added later using \code{attr()}.
+#'   
+#' @param model_name Character string providing a descriptive name for your model
+#'   (optional). This name will appear in output summaries and reports. Examples:
+#'   \code{"primary_efficacy"}, \code{"safety_analysis"}, \code{"sensitivity_1"}.
+#'
+#' @return A `ModelSpecification` object that can be used with [fit_model()].
+#'   The object contains all the information needed to fit the Bayesian model
+#'   and includes validation to ensure the specification is coherent.
+#'
+#' @details
+#' ## Model Specification Process
 #' 
-#' @param outcome Outcome variable name
-#' @param predictors Predictor formula string
-#' @param random_effects Random effects formula string (optional)
-#' @param family Distribution family (default: "gaussian")
-#' @param link Link function (default: "identity")
-#' @param priors Prior specifications (optional)
-#' @param model_name Name for the model (optional)
-#' @return A ModelSpecification object
+#' The function performs several validation steps:
+#' 1. Checks that the outcome variable name is provided
+#' 2. Validates that predictors follow proper formula syntax
+#' 3. Ensures family and link function combinations are valid
+#' 4. Verifies random effects syntax (if provided)
+#' 
+#' ## Family-Link Combinations
+#' 
+#' Valid family-link combinations include:
+#' - **Gaussian**: identity, log, inverse
+#' - **Binomial**: logit, probit, cloglog, identity  
+#' - **Poisson**: log, identity
+#' - **Gamma**: inverse, identity, log
+#' - **Student-t**: identity, log, inverse
+#' 
+#' ## Clinical Trial Context
+#' 
+#' In clinical trials, common patterns include:
+#' - **Continuous outcomes** (e.g., blood pressure, weight): Use `family = "gaussian"`
+#' - **Binary outcomes** (e.g., response/non-response): Use `family = "binomial"`  
+#' - **Time-to-event** (with discrete time): Use `family = "binomial"` with appropriate predictors
+#' - **Count outcomes** (e.g., number of adverse events): Use `family = "poisson"`
+#' - **Biomarker data** (positive continuous): Consider `family = "gamma"` or `family = "lognormal"`
+#'
+#' @examples
+#' # Basic continuous outcome model
+#' continuous_spec <- create_model_spec(
+#'   outcome = "systolic_bp",
+#'   predictors = "treatment + age + baseline_bp",
+#'   family = "gaussian",
+#'   model_name = "primary_efficacy"
+#' )
+#' 
+#' # Binary outcome with interaction
+#' binary_spec <- create_model_spec(
+#'   outcome = "response", 
+#'   predictors = "treatment * biomarker_high + age + sex",
+#'   family = "binomial",
+#'   link = "logit",
+#'   model_name = "response_analysis"
+#' )
+#' 
+#' # Multi-site trial with random effects
+#' hierarchical_spec <- create_model_spec(
+#'   outcome = "pain_score",
+#'   predictors = "treatment + baseline_pain + age",
+#'   random_effects = "(1|site)",
+#'   family = "gaussian", 
+#'   model_name = "multi_site_analysis"
+#' )
+#' 
+#' # Count data (adverse events)
+#' count_spec <- create_model_spec(
+#'   outcome = "ae_count",
+#'   predictors = "treatment + age + comorbidity_score",
+#'   family = "poisson",
+#'   link = "log",
+#'   model_name = "safety_analysis"
+#' )
+#' 
+#' # With prior specifications
+#' library(bayestrials)
+#' priors <- PriorSpecification()
+#' priors <- add_prior(priors, "b_treatment", "normal", 0, 2.5)
+#' priors <- add_prior(priors, "Intercept", "normal", 120, 20)  # For BP data
+#' 
+#' spec_with_priors <- create_model_spec(
+#'   outcome = "systolic_bp",
+#'   predictors = "treatment + age",
+#'   family = "gaussian",
+#'   priors = priors,
+#'   model_name = "bp_analysis_with_priors"
+#' )
+#'
+#' @seealso 
+#' - [fit_model()] to fit the model using the specification
+#' - [PriorSpecification()] to create prior specifications
+#' - [validate_model_spec()] to check specification validity
+#' - [update_model_spec()] to modify existing specifications
+#' - [read_model_spec()] to read specifications from CSV files
+#'
 #' @export
 create_model_spec <- function(outcome, 
                              predictors, 

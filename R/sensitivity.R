@@ -1,12 +1,188 @@
-#' Run sensitivity analyses
+#' Conduct comprehensive sensitivity analyses for clinical trial models
+#'
+#' Performs systematic sensitivity analyses to evaluate the robustness of 
+#' Bayesian clinical trial results to different modeling assumptions, prior 
+#' specifications, and data handling approaches. Essential for clinical 
+#' submissions and scientific credibility of trial conclusions.
+#'
+#' @param base_model A fitted BayesianModel object from \code{\link{fit_model}}
+#'   representing the primary analysis model. This serves as the reference 
+#'   point for all sensitivity comparisons. Must contain:
+#'   \itemize{
+#'     \item Fitted MCMC samples with convergence
+#'     \item Model specification with clear parameter names
+#'     \item Treatment effect estimates for comparison
+#'   }
+#'   
+#' @param data Data frame containing the clinical trial dataset. Should be 
+#'   the same data used for the base model to ensure valid comparisons.
+#'   For missing data sensitivity, may include different imputation scenarios.
+#'   
+#' @param sensitivity_specs Named list of alternative model specifications or
+#'   prior sets depending on sensitivity type:
+#'   \itemize{
+#'     \item \strong{Prior sensitivity:} List of PriorSpecification objects
+#'       (e.g., neutral, skeptical, optimistic, informative)
+#'     \item \strong{Model sensitivity:} List of ModelSpecification objects
+#'       (e.g., linear vs. non-linear, different covariates)
+#'     \item \strong{Missing data sensitivity:} List of alternative datasets
+#'       or imputation strategies
+#'   }
+#'   Names will be used in comparison tables and plots.
+#'   
+#' @param type Character string specifying sensitivity analysis type:
+#'   \itemize{
+#'     \item \code{"prior"} - Evaluate sensitivity to different prior assumptions.
+#'       Tests robustness to subjective prior beliefs.
+#'     \item \code{"model"} - Evaluate sensitivity to model structural assumptions.
+#'       Tests alternative covariate specifications or functional forms.
+#'     \item \code{"missing_data"} - Evaluate sensitivity to missing data handling.
+#'       Tests complete case vs. imputation approaches.
+#'   }
+#'   
+#' @param parallel Logical indicating whether to use parallel processing:
+#'   \itemize{
+#'     \item \code{TRUE} - Fit sensitivity models in parallel (recommended)
+#'     \item \code{FALSE} - Sequential fitting for debugging or memory constraints
+#'   }
+#'   
+#' @param ... Additional arguments passed to \code{\link{fit_model}} for
+#'   sensitivity model fitting (e.g., chains, iter, cores, seed).
+#'
+#' @return A sensitivity_results object containing:
+#'   \itemize{
+#'     \item \code{base_model} - Original reference model
+#'     \item \code{sensitivity_models} - List of fitted alternative models
+#'     \item \code{comparisons} - Statistical comparisons between models
+#'     \item \code{summary} - Summary of sensitivity assessment
+#'     \item \code{type} - Type of sensitivity analysis conducted
+#'   }
+#'   Object can be used with \code{\link{sensitivity_report}} and \code{\link{plot_sensitivity}}.
+#'
+#' @details
+#' \strong{Sensitivity Analysis Strategy:}
 #' 
-#' @param base_model A BayesianModel object representing the base model
-#' @param data Data frame containing the data
-#' @param sensitivity_specs List of model specifications for sensitivity analyses
-#' @param type Type of sensitivity analysis (prior, model, missing_data)
-#' @param parallel Logical indicating whether to use parallel processing
-#' @param ... Additional arguments passed to fit_model
-#' @return List of sensitivity analysis results
+#' \strong{Prior Sensitivity Analysis:}
+#' \itemize{
+#'   \item Compare treatment effect estimates across different prior beliefs
+#'   \item Assess posterior sensitivity to prior informativeness
+#'   \item Document robustness for clinical review
+#'   \item Flag analyses where priors dominate likelihood
+#' }
+#' 
+#' \strong{Model Structure Sensitivity:}
+#' \itemize{
+#'   \item Test alternative covariate adjustments
+#'   \item Compare linear vs. non-linear functional forms
+#'   \item Evaluate different error distributions
+#'   \item Assess model selection uncertainty
+#' }
+#' 
+#' \strong{Missing Data Sensitivity:}
+#' \itemize{
+#'   \item Compare complete case vs. multiple imputation
+#'   \item Test different missing data mechanisms (MAR, MNAR)
+#'   \item Evaluate sensitivity to imputation model assumptions
+#'   \item Document potential bias from incomplete data
+#' }
+#' 
+#' \strong{Interpretation Guidelines:}
+#' \itemize{
+#'   \item \strong{< 10% difference:} Results robust to assumptions
+#'   \item \strong{10-30% difference:} Moderate sensitivity requiring discussion
+#'   \item \strong{> 30% difference:} High sensitivity requiring caution
+#'   \item Consider both effect size and direction changes
+#' }
+#'
+#' @examples
+#' \dontrun{
+#' # Fit base model for primary analysis
+#' data(synthetic_trial_data)
+#' base_spec <- create_model_spec(
+#'   outcome ~ treatment + age + sex + baseline_score,
+#'   family = "gaussian"
+#' )
+#' base_priors <- default_priors("neutral")
+#' base_model <- fit_model(base_spec, synthetic_trial_data, base_priors)
+#' 
+#' # Prior sensitivity analysis
+#' prior_specs <- list(
+#'   neutral = default_priors("neutral"),
+#'   skeptical = default_priors("skeptical"), 
+#'   optimistic = default_priors("optimistic"),
+#'   informative = create_informative_priors()  # Based on previous studies
+#' )
+#' 
+#' prior_sensitivity <- run_sensitivity_analyses(
+#'   base_model = base_model,
+#'   data = synthetic_trial_data,
+#'   sensitivity_specs = prior_specs,
+#'   type = "prior",
+#'   parallel = TRUE
+#' )
+#' 
+#' # Model structure sensitivity analysis
+#' model_specs <- list(
+#'   linear_age = create_model_spec(
+#'     outcome ~ treatment + age + sex,
+#'     family = "gaussian"
+#'   ),
+#'   nonlinear_age = create_model_spec(
+#'     outcome ~ treatment + splines::bs(age, 3) + sex,
+#'     family = "gaussian"
+#'   ),
+#'   interaction = create_model_spec(
+#'     outcome ~ treatment * age + sex,
+#'     family = "gaussian"
+#'   ),
+#'   robust_errors = create_model_spec(
+#'     outcome ~ treatment + age + sex,
+#'     family = "student"  # t-distributed errors
+#'   )
+#' )
+#' 
+#' model_sensitivity <- run_sensitivity_analyses(
+#'   base_model = base_model,
+#'   data = synthetic_trial_data,
+#'   sensitivity_specs = model_specs,
+#'   type = "model"
+#' )
+#' 
+#' # Missing data sensitivity analysis
+#' # Create datasets with different missing data handling
+#' complete_case_data <- synthetic_trial_data[complete.cases(synthetic_trial_data), ]
+#' imputed_data_1 <- perform_imputation(synthetic_trial_data, method = "mice")
+#' imputed_data_2 <- perform_imputation(synthetic_trial_data, method = "missForest")
+#' 
+#' missing_data_specs <- list(
+#'   complete_case = complete_case_data,
+#'   mice_imputation = imputed_data_1,
+#'   rf_imputation = imputed_data_2
+#' )
+#' 
+#' missing_sensitivity <- run_sensitivity_analyses(
+#'   base_model = base_model,
+#'   data = NULL,  # Different datasets provided in specs
+#'   sensitivity_specs = missing_data_specs,
+#'   type = "missing_data"
+#' )
+#' 
+#' # Generate comprehensive sensitivity reports
+#' sensitivity_report(prior_sensitivity, "prior_sensitivity.html")
+#' sensitivity_report(model_sensitivity, "model_sensitivity.html") 
+#' sensitivity_report(missing_sensitivity, "missing_data_sensitivity.html")
+#' 
+#' # Create summary plots
+#' plot_sensitivity(prior_sensitivity, type = "forest")
+#' plot_sensitivity(model_sensitivity, type = "comparison")
+#' }
+#'
+#' @seealso 
+#' \code{\link{fit_model}} for Bayesian model fitting,
+#' \code{\link{default_priors}} for standard prior specifications,
+#' \code{\link{sensitivity_report}} for generating detailed reports,
+#' \code{\link{plot_sensitivity}} for sensitivity visualization
+#'
 #' @export
 run_sensitivity_analyses <- function(base_model,
                                    data,

@@ -47,8 +47,36 @@ library(bayestrials)
 
 bayestrials uses [brms](https://paul-buerkner.github.io/brms/) (Bayesian Regression Models using Stan) as its modeling backend. This provides:
 - Robust Stan model compilation and caching
-- Comprehensive family support (Gaussian, Binomial, Poisson, etc.)
+- Comprehensive family support (Gaussian, Binomial, Poisson, etc.)  
 - Advanced model diagnostics and convergence checking
+
+## Use Cases
+
+bayestrials is designed for various clinical trial analysis scenarios:
+
+### 🏥 **Primary Analysis of RCTs**
+- Analyze treatment effects with appropriate uncertainty quantification
+- Handle missing data with principled Bayesian approaches
+- Incorporate historical or expert prior information
+- Generate regulatory-ready analysis reports
+
+### 📊 **Secondary and Exploratory Analyses**  
+- Subgroup analyses with proper multiplicity adjustment
+- Time-to-event analyses with survival models
+- Longitudinal analyses with mixed-effects models
+- Biomarker and pharmacokinetic modeling
+
+### 🔍 **Meta-Analysis and Evidence Synthesis**
+- Bayesian meta-analysis of multiple trials
+- Network meta-analysis for indirect comparisons
+- Integration of real-world evidence with trial data
+- Historical borrowing with dynamic priors
+
+### 🎯 **Regulatory Submissions**
+- FDA/EMA compliant Bayesian analysis plans
+- Sensitivity analyses for regulatory review  
+- Prior justification and robustness assessment
+- Comprehensive documentation and reproducibility
 
 ## Quick Start
 
@@ -109,27 +137,142 @@ forest_plot <- plot_forest(estimates)
 
 ### Expected Output
 
-The model should converge successfully and show:
-- Treatment effect estimate with credible intervals
-- Convergence diagnostics (Rhat ≈ 1.0, adequate ESS)
-- Posterior distributions for all parameters
+When the above code runs successfully, you should see:
+
+```r
+# Model summary output:
+Bayesian Clinical Trial Model
+----------------------------
+Model Specification: linear_regression 
+  Formula: outcome_continuous ~ treatment + age_centered + baseline_severity_centered
+  Family: gaussian
+  Link: identity
+
+Model Summary:
+  Algorithm: sampling
+  Samples: 1000
+  Chains: 2
+
+Treatment Effect:
+  Estimate: 1.256
+  95% CI: [0.892, 1.634]
+
+Diagnostics:
+  Warnings: 0
+  Rhat issues: 0 parameters
+```
+
+**Key indicators of success:**
+- **Rhat values ≈ 1.00**: All parameters converged properly
+- **ESS > 400**: Adequate effective sample size for reliable estimates  
+- **No divergences**: MCMC sampling was efficient
+- **Treatment effect**: Credible interval and point estimate
 
 ## CSV-Based Workflow
 
+For larger projects and reproducible analyses, bayestrials supports CSV-based model and prior specification:
+
+### 📁 **File Structure**
+```
+analysis_project/
+├── data/
+│   ├── trial_data.csv           # Your clinical trial data
+│   └── covariate_specs.csv      # Variable definitions and transformations
+├── specifications/
+│   ├── model_specs.csv          # Model specifications  
+│   └── prior_specs.csv          # Prior specifications
+└── analysis/
+    └── run_analysis.R           # Main analysis script
+```
+
+### 📋 **Model Specification CSV Format**
+```csv
+model_name,outcome,predictors,family,link
+primary_analysis,response,treatment + age + sex + baseline_score,gaussian,identity
+sensitivity_1,response,treatment + age + sex,gaussian,identity  
+subgroup_analysis,response,treatment * age + sex + baseline_score,gaussian,identity
+```
+
+### 📊 **Prior Specification CSV Format**
+```csv
+parameter,distribution,location,scale,lb,ub
+b_treatment,normal,0,2.5,NA,NA
+b_age,normal,0,1.0,NA,NA
+b_sex,normal,0,1.5,NA,NA
+Intercept,normal,50,20,NA,NA
+sigma,half_cauchy,NA,5,0,NA
+```
+
+### 🚀 **Complete Workflow Example**
+
 ```r
-# Load and prepare data
-data <- load_clinical_trial("trial_data.csv")
-data <- preprocess_data(data, specs = "covariate_specs.csv")
+# Load and prepare data with comprehensive preprocessing
+data <- load_clinical_trial("data/trial_data.csv")
+data <- preprocess_data(data, specs = "data/covariate_specs.csv")
 
-# Specify model from CSV files
-model_spec <- read_model_spec("model_specs.csv", 
-                             "prior_specs.csv")
+# Print data summary
+cat("Dataset loaded successfully:\n")
+cat("- Observations:", nrow(data), "\n")
+cat("- Variables:", ncol(data), "\n")
+cat("- Treatment groups:", table(data$treatment), "\n")
 
-# Fit model
-model <- fit_model(model_spec, data)
+# Read all model specifications from CSV
+model_specs <- read_model_spec(
+  model_file = "specifications/model_specs.csv",
+  prior_file = "specifications/prior_specs.csv",
+  validate = TRUE  # Validate all specifications
+)
 
-# Generate comprehensive report
-generate_report(model, template = "basic_report")
+# Display available models
+cat("\nAvailable models:\n")
+for(i in seq_along(model_specs)) {
+  cat("-", names(model_specs)[i], "\n")
+}
+
+# Fit primary model
+primary_model <- fit_model(
+  model_spec = model_specs$primary_analysis,
+  data = data,
+  chains = 4,
+  iter = 2000,
+  seed = 123
+)
+
+# Generate comprehensive analysis report
+report_file <- generate_report(
+  model = primary_model,
+  template = "basic_report",
+  output_file = "primary_analysis_report.html",
+  params = list(
+    title = "Primary Efficacy Analysis",
+    subtitle = "Bayesian Analysis of Treatment Effect"
+  )
+)
+
+cat("Analysis complete! Report saved to:", report_file, "\n")
+```
+
+### 📈 **Batch Processing Multiple Models**
+
+```r
+# Fit all specified models in parallel
+all_models <- fit_models(
+  model_specs = model_specs,
+  data = data,
+  parallel = TRUE,
+  cores = 4
+)
+
+# Compare models using information criteria
+model_comparison <- compare_models(all_models)
+print(model_comparison)
+
+# Generate comparison report
+comparison_report <- generate_report(
+  models = all_models,
+  template = "model_comparison",
+  output_file = "model_comparison_report.html"
+)
 ```
 
 ## Multi-Trial Workflow
@@ -265,28 +408,312 @@ devtools::check()
 
 ## Troubleshooting
 
-### Common Installation Issues
+### 🔧 **Installation Issues**
 
-**Stan Compilation Errors:**
-- **macOS**: Install Xcode Command Line Tools: `xcode-select --install`
-- **Windows**: Ensure Rtools is properly installed and added to PATH
-- **All platforms**: Restart R after installing compiler tools
+#### **C++ Compiler Problems**
 
-**Memory Issues:**
-- Reduce sample size for initial testing: `n_observations = 100`
-- Use fewer chains: `chains = 1` or `chains = 2`
-- Reduce iterations: `iter = 500`
+**macOS - Xcode Command Line Tools**
+```bash
+# Check if tools are installed
+xcode-select -p
 
-### Common Model Fitting Issues
+# Install if missing
+xcode-select --install
 
-**Convergence Problems:**
-- Increase `adapt_delta`: `control = list(adapt_delta = 0.99)`
-- Increase iterations: `iter = 4000`
-- Check for data issues (missing values, outliers)
+# Verify installation
+gcc --version
+make --version
+```
 
-**Prior Specification:**
-- `half_cauchy` priors are automatically converted to `student_t(3, 0, scale)`
-- Use `to_brms_prior()` to preview prior conversion before fitting
+**Windows - Rtools Installation**
+```r
+# Check current R version
+R.version.string
+
+# Download appropriate Rtools from https://cran.r-project.org/bin/windows/Rtools/
+# For R 4.3+: Rtools43
+# For R 4.2: Rtools42
+
+# Verify Rtools installation
+Sys.which("make")
+Sys.which("gcc")
+
+# If empty, add to PATH or reinstall Rtools with "Add to PATH" checked
+```
+
+**Linux - Build Tools**
+```bash
+# Ubuntu/Debian
+sudo apt update
+sudo apt install build-essential r-base-dev
+
+# CentOS/RHEL/Fedora  
+sudo yum groupinstall "Development Tools"
+sudo yum install R-devel
+
+# Verify installation
+gcc --version
+make --version
+```
+
+#### **R Package Dependencies**
+
+```r
+# Check for missing dependencies
+required_packages <- c("brms", "rstan", "rstantools", "bridgesampling", 
+                      "tidyverse", "future", "furrr", "progressr")
+
+missing <- required_packages[!sapply(required_packages, requireNamespace, quietly = TRUE)]
+
+if(length(missing) > 0) {
+  cat("Installing missing packages:", paste(missing, collapse = ", "), "\n")
+  install.packages(missing)
+}
+
+# For brms specifically (if installation fails)
+install.packages("brms", dependencies = TRUE)
+
+# For development version of brms (if needed)
+remotes::install_github("paul-buerkner/brms")
+```
+
+#### **Stan Configuration Issues**
+
+```r
+# Configure Stan compilation options
+options(mc.cores = parallel::detectCores())
+rstan_options(auto_write = TRUE)
+
+# Test Stan installation
+library(rstan)
+example(stan_model, package = "rstan", run.dontrun = TRUE)
+
+# If Stan fails, try rebuilding
+remove.packages("rstan")
+install.packages("rstan", repos = c("https://mc-stan.org/r-packages/", getOption("repos")))
+```
+
+### 🎯 **Model Fitting Issues**
+
+#### **Convergence Diagnostics**
+
+**High Rhat Values (> 1.01)**
+```r
+# Increase iterations and warmup
+result <- fit_model(
+  model_spec, data,
+  iter = 4000,        # Double iterations
+  warmup = 2000,      # Increase warmup
+  chains = 4
+)
+
+# Increase adaptation
+result <- fit_model(
+  model_spec, data,
+  control = list(
+    adapt_delta = 0.95,    # Increase from default 0.8
+    max_treedepth = 12     # Increase from default 10
+  )
+)
+
+# Check specific parameters with issues
+diagnostics <- check_diagnostics(result)
+print(diagnostics$rhat_summary)
+```
+
+**Divergent Transitions**
+```r
+# Increase adapt_delta (most common solution)
+result <- fit_model(
+  model_spec, data,
+  control = list(adapt_delta = 0.99)  # Up to 0.999 if needed
+)
+
+# Reparameterize model if persistent divergences
+# Check for highly correlated parameters
+estimates <- extract_estimates(result)
+cor_matrix <- cor(extract_posterior(result))
+print(cor_matrix)
+
+# Consider different prior specifications
+# Hierarchical centering vs non-centering
+```
+
+**Low Effective Sample Size (ESS)**
+```r
+# Increase total iterations
+result <- fit_model(
+  model_spec, data,
+  iter = 8000,        # More iterations
+  chains = 4
+)
+
+# Check for poor mixing - examine trace plots
+plot_diagnostics(result, type = "trace")
+
+# Consider thinning (last resort)
+result <- fit_model(
+  model_spec, data,
+  thin = 2           # Keep every 2nd sample
+)
+```
+
+#### **Prior Specification Issues**
+
+**Understanding Prior Conversion**
+```r
+# Check how your priors are converted
+priors <- PriorSpecification()
+priors <- add_prior(priors, "sigma", "half_cauchy", NA, 5, 0)
+
+# Preview conversion
+brms_priors <- to_brms_prior(priors)
+print(brms_priors)  # Shows: student_t(3, 0, 5)
+
+# Visualize prior implications
+plot_priors(priors)
+```
+
+**Prior-Data Conflicts**
+```r
+# Check for unreasonable priors
+summary(your_data$outcome)  # Check outcome range
+# If outcome ranges 0-100, don't use Normal(0, 1000) for intercept
+
+# Use prior predictive checks
+prior_predictive <- brm(
+  formula, data,
+  prior = your_priors,
+  sample_prior = "only",  # Sample from prior only
+  chains = 2, iter = 500
+)
+
+# Check if prior predictions make sense
+plot(prior_predictive)
+```
+
+#### **Data-Related Issues**
+
+**Missing Data**
+```r
+# Check missing data patterns
+library(VIM)
+VIM::aggr(data, col = c('navyblue','red'), numbers = TRUE, sortVars = TRUE)
+
+# Handle missing data explicitly
+complete_data <- na.omit(data)  # Complete case analysis
+# Or use multiple imputation approaches
+
+# Model can handle some missingness
+result <- fit_model(model_spec, data)  # brms handles NAs in predictors
+```
+
+**Scaling and Centering Issues**
+```r
+# Check variable scales
+summary(data[, c("age", "baseline_score", "biomarker")])
+
+# Standardize continuous variables
+data$age_scaled <- scale(data$age)[, 1]
+data$baseline_scaled <- scale(data$baseline_score)[, 1]
+
+# Update model specification
+model_spec <- create_model_spec(
+  outcome = "response",
+  predictors = "treatment + age_scaled + baseline_scaled"
+)
+```
+
+**Extreme Outliers**
+```r
+# Identify outliers
+boxplot(data$outcome)
+outliers <- which(abs(scale(data$outcome)) > 3)
+
+# Options:
+# 1. Remove outliers (with justification)
+clean_data <- data[-outliers, ]
+
+# 2. Use robust models (Student-t errors instead of normal)
+robust_spec <- create_model_spec(
+  outcome = "response",
+  predictors = "treatment + covariates",
+  family = "student_t"  # Heavy-tailed errors
+)
+
+# 3. Transform outcome
+data$log_outcome <- log(data$outcome + 1)  # Log transform
+```
+
+### 🚀 **Performance Optimization**
+
+**Slow Model Fitting**
+```r
+# Use more cores
+result <- fit_model(
+  model_spec, data,
+  cores = parallel::detectCores() - 1  # Leave one core free
+)
+
+# Reduce complexity for initial fitting
+small_data <- data[sample(nrow(data), 100), ]  # Subset for testing
+simple_spec <- create_model_spec(
+  outcome = "response", 
+  predictors = "treatment"  # Minimal model first
+)
+
+# Optimize Stan settings
+result <- fit_model(
+  model_spec, data,
+  algorithm = "meanfield"  # Faster variational inference (less accurate)
+)
+```
+
+**Memory Issues**
+```r
+# Monitor memory usage
+gc()  # Garbage collection
+object.size(result)  # Check model size
+
+# Reduce memory footprint
+result <- fit_model(
+  model_spec, data,
+  save_warmup = FALSE,     # Don't save warmup samples
+  save_all_pars = FALSE    # Don't save all parameters
+)
+
+# Clear workspace regularly
+rm(large_objects)
+gc()
+```
+
+### 📋 **Diagnostic Checklist**
+
+Before reporting issues, check:
+
+```r
+# 1. System information
+sessionInfo()
+cat("bayestrials version:", packageVersion("bayestrials"), "\n")
+
+# 2. Data integrity  
+str(data)
+summary(data)
+sum(is.na(data))
+
+# 3. Model specification
+print(model_spec)
+validate_model_spec(model_spec)
+
+# 4. Prior specifications
+print(priors)
+brms_version <- to_brms_prior(priors)
+print(brms_version)
+
+# 5. Fitting diagnostics
+diagnostics <- check_diagnostics(result)
+print(diagnostics)
+```
 
 ## Getting Help
 

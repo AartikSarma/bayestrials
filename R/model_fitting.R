@@ -122,17 +122,215 @@ extract_treatment_effect <- function(model, parameter = "treatment") {
   return(NULL)
 }
 
-#' Fit a Bayesian model using brms
+#' Fit a Bayesian clinical trial model using advanced MCMC sampling
+#'
+#' This is the core function that performs Bayesian model fitting using the brms
+#' backend with Stan. It takes a model specification and dataset, then uses 
+#' Hamiltonian Monte Carlo (HMC) sampling to generate posterior distributions
+#' for all model parameters. The function includes comprehensive error checking,
+#' diagnostic monitoring, and automatic handling of prior specifications.
+#'
+#' @param model_spec A `ModelSpecification` object created with [create_model_spec()].
+#'   This defines the outcome variable, predictors, statistical family, and other
+#'   model components. Prior specifications can be attached as an attribute.
+#'   
+#' @param data A data frame containing your clinical trial data. Must include:
+#'   \itemize{
+#'     \item The outcome variable specified in `model_spec`
+#'     \item All predictor variables specified in `model_spec`  
+#'     \item Any grouping variables for random effects (if applicable)
+#'   }
+#'   Missing values in predictors will result in case-wise deletion with warnings.
+#'   
+#' @param chains Integer specifying the number of independent MCMC chains to run
+#'   (default: 4). Multiple chains allow assessment of convergence through the
+#'   Gelman-Rubin diagnostic (Rhat). Recommendations:
+#'   \itemize{
+#'     \item **4 chains**: Standard for final analyses (recommended)
+#'     \item **2 chains**: Minimum for convergence checking
+#'     \item **1 chain**: Only for initial testing (no convergence diagnostics)
+#'   }
+#'   
+#' @param cores Integer specifying the number of CPU cores to use for parallel
+#'   chain execution (default: all available cores via `parallel::detectCores()`).
+#'   Setting `cores = chains` allows each chain to run on its own core, maximizing
+#'   speed. Use fewer cores if you need to keep your system responsive.
+#'   
+#' @param iter Integer specifying the total number of iterations per chain 
+#'   (default: 2000). This includes both warmup and sampling phases:
+#'   \itemize{
+#'     \item **Warmup**: First half of iterations used for adaptation (discarded)
+#'     \item **Sampling**: Second half retained for posterior inference
+#'     \item **2000 total**: 1000 warmup + 1000 sampling per chain (standard)
+#'     \item **4000 total**: Use for difficult convergence problems
+#'     \item **1000 total**: Use for quick initial testing only
+#'   }
+#'   
+#' @param seed Integer for random number generation to ensure reproducible results
+#'   (optional). When specified, the same dataset and model specification will
+#'   always produce identical results. Essential for regulatory submissions and
+#'   collaborative research.
+#'   
+#' @param save_model Logical indicating whether to save the complete brmsfit object
+#'   (default: TRUE). When FALSE, saves memory but limits post-fitting diagnostics
+#'   and model comparisons. Only set to FALSE for memory-constrained environments.
+#'   
+#' @param control Named list of advanced control parameters passed to Stan's
+#'   NUTS sampler. Key parameters include:
+#'   \itemize{
+#'     \item `adapt_delta`: Target acceptance rate (default: 0.9, range: 0-1).
+#'       Increase to 0.95+ if you get divergent transition warnings.
+#'     \item `max_treedepth`: Maximum tree depth for NUTS algorithm (default: 10).
+#'       Increase if you get "maximum treedepth exceeded" warnings.
+#'     \item `stepsize`: Initial step size (rarely needs adjustment)
+#'   }
+#'
+#' @return A `BayesianModel` object containing:
+#'   \itemize{
+#'     \item `model`: The fitted brmsfit object with posterior samples
+#'     \item `model_spec`: The original model specification
+#'     \item `prior_spec`: Prior specifications used (if any)
+#'     \item `data_info`: Summary of the dataset used
+#'     \item `diagnostics`: Convergence and sampling diagnostics
+#'   }
+#'   Use [print()], [summary()], or [extract_estimates()] to examine results.
+#'
+#' @details
+#' ## Fitting Process
 #' 
-#' @param model_spec A ModelSpecification object
-#' @param data Data frame containing the data
-#' @param chains Number of MCMC chains
-#' @param cores Number of cores to use
-#' @param iter Number of iterations per chain
-#' @param seed Random seed for reproducibility
-#' @param save_model Logical indicating whether to save model object
-#' @param control List of control parameters for Stan
-#' @return A BayesianModel object
+#' The function follows these steps:
+#' 1. **Validation**: Checks model specification and data compatibility
+#' 2. **Prior Processing**: Converts bayestrials priors to brms format
+#' 3. **Compilation**: Compiles the Stan model (cached for reuse)
+#' 4. **Sampling**: Runs MCMC chains with automatic adaptation
+#' 5. **Diagnostics**: Checks convergence and provides warnings
+#' 6. **Results**: Returns a structured BayesianModel object
+#' 
+#' ## Convergence Monitoring
+#' 
+#' The function automatically monitors:
+#' - **Rhat values**: Should be ≤ 1.01 for all parameters
+#' - **Effective sample size (ESS)**: Should be > 400 for reliable estimates
+#' - **Divergent transitions**: Should be 0 (indicates sampling problems)
+#' - **Energy diagnostics**: Checks for inefficient sampling
+#' 
+#' ## Common Issues and Solutions
+#' 
+#' **Convergence Problems** (High Rhat):
+#' - Increase `iter` to 4000 or 8000
+#' - Increase `adapt_delta` to 0.95 or 0.99
+#' - Check for data scaling issues or outliers
+#' 
+#' **Divergent Transitions**:
+#' - Increase `adapt_delta` (most common solution)
+#' - Reparameterize model (center/scale predictors)
+#' - Check prior reasonableness
+#' 
+#' **Slow Fitting**:
+#' - Use more cores: `cores = 4` or `cores = chains`
+#' - Reduce complexity for testing: subset data or simplify model
+#' - Consider variational inference for exploration
+#' 
+#' ## Clinical Trial Applications
+#' 
+#' **Regulatory Submissions**: Use `chains = 4`, `iter = 4000`, and set `seed`
+#' for reproducibility. Run convergence diagnostics and sensitivity analyses.
+#' 
+#' **Exploratory Analysis**: Use `chains = 2`, `iter = 1000` for faster iteration
+#' during model development.
+#' 
+#' **Final Publication**: Use `chains = 4`, `iter = 2000+`, comprehensive priors,
+#' and full diagnostic reporting.
+#'
+#' @examples
+#' \dontrun{
+#' # Load bayestrials and create example data
+#' library(bayestrials)
+#' data <- generate_synthetic_data(n_observations = 200, seed = 123)
+#' 
+#' # Basic continuous outcome model
+#' spec <- create_model_spec(
+#'   outcome = "outcome_continuous",
+#'   predictors = "treatment + age_centered",
+#'   family = "gaussian",
+#'   model_name = "basic_model"
+#' )
+#' 
+#' # Quick fit for testing (minimal chains/iterations)
+#' quick_result <- fit_model(
+#'   model_spec = spec,
+#'   data = data,
+#'   chains = 2,
+#'   iter = 1000,
+#'   cores = 2
+#' )
+#' 
+#' # Production fit with full diagnostics
+#' final_result <- fit_model(
+#'   model_spec = spec,
+#'   data = data,
+#'   chains = 4,
+#'   iter = 2000,
+#'   cores = 4,
+#'   seed = 12345  # Reproducible results
+#' )
+#' 
+#' # Model with prior specifications
+#' priors <- PriorSpecification()
+#' priors <- add_prior(priors, "b_treatment", "normal", 0, 2.5)
+#' priors <- add_prior(priors, "Intercept", "normal", 10, 5)
+#' priors <- add_prior(priors, "sigma", "half_cauchy", NA, 3, 0)
+#' 
+#' attr(spec, "priors") <- priors
+#' 
+#' result_with_priors <- fit_model(
+#'   model_spec = spec,
+#'   data = data,
+#'   chains = 4,
+#'   iter = 2000
+#' )
+#' 
+#' # Handle convergence issues
+#' robust_result <- fit_model(
+#'   model_spec = spec,
+#'   data = data,
+#'   chains = 4,
+#'   iter = 4000,  # More iterations
+#'   control = list(
+#'     adapt_delta = 0.99,      # Higher acceptance rate
+#'     max_treedepth = 12       # Deeper trees allowed
+#'   )
+#' )
+#' 
+#' # Check results
+#' print(final_result)
+#' diagnostics <- check_diagnostics(final_result)
+#' estimates <- extract_estimates(final_result)
+#' 
+#' # Binary outcome example
+#' binary_spec <- create_model_spec(
+#'   outcome = "outcome_binary",
+#'   predictors = "treatment + age_centered + sex",
+#'   family = "binomial",
+#'   link = "logit"
+#' )
+#' 
+#' binary_result <- fit_model(
+#'   model_spec = binary_spec,
+#'   data = data,
+#'   chains = 4,
+#'   iter = 2000
+#' )
+#' }
+#'
+#' @seealso 
+#' - [create_model_spec()] to create model specifications
+#' - [check_diagnostics()] to assess model convergence
+#' - [extract_estimates()] to get parameter estimates
+#' - [plot_posterior()] to visualize posterior distributions
+#' - [compare_models()] to compare multiple fitted models
+#' - [PriorSpecification()] for specifying prior distributions
+#'
 #' @export
 fit_model <- function(model_spec, 
                      data,
