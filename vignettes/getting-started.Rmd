@@ -1,0 +1,289 @@
+---
+title: "Getting Started with bayestrials"
+author: "bayestrials Team"
+date: "`r Sys.Date()`"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Getting Started with bayestrials}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  eval = FALSE  # Set to FALSE initially to avoid compilation issues during package building
+)
+```
+
+# Getting Started with bayestrials
+
+This guide will help you install and set up bayestrials, then walk through your first Bayesian clinical trial analysis.
+
+## Installation
+
+### System Requirements
+
+Before installing bayestrials, ensure you have the necessary system components:
+
+#### R Version
+bayestrials requires R version 4.0.0 or higher:
+
+```{r check-r-version}
+# Check your R version
+R.version.string
+```
+
+#### C++ Compiler for Stan
+
+bayestrials uses Stan (via brms) which requires a C++ compiler:
+
+**macOS:**
+```bash
+# Install Xcode Command Line Tools
+xcode-select --install
+```
+
+**Windows:**
+- Install [Rtools](https://cran.r-project.org/bin/windows/Rtools/) for your R version
+- Ensure "Add rtools to system PATH" is checked during installation
+
+**Linux (Ubuntu/Debian):**
+```bash
+sudo apt update
+sudo apt install build-essential
+```
+
+### Package Installation
+
+```{r install-bayestrials}
+# Install development version from GitHub
+if (!require("devtools")) install.packages("devtools")
+devtools::install_github("AartikSarma/bayestrials")
+
+# Load the package
+library(bayestrials)
+```
+
+### Verify Installation
+
+Test that everything is working:
+
+```{r verify-installation}
+# Check package version
+packageVersion("bayestrials")
+
+# Test basic functionality
+data <- generate_synthetic_data(n_observations = 10, seed = 123)
+head(data)
+```
+
+## Your First Analysis
+
+Let's walk through a complete analysis from start to finish.
+
+### Step 1: Generate or Load Data
+
+```{r first-analysis-data}
+# Generate synthetic clinical trial data
+set.seed(42)
+trial_data <- generate_synthetic_data(
+  n_observations = 150,
+  outcome_type = "continuous", 
+  seed = 42
+)
+
+# Examine the data
+str(trial_data)
+summary(trial_data[c("treatment", "age_centered", "outcome_continuous")])
+```
+
+### Step 2: Specify Your Model
+
+```{r first-analysis-model}
+# Create a simple linear regression model
+model_spec <- create_model_spec(
+  outcome = "outcome_continuous",
+  predictors = "treatment + age_centered",
+  family = "gaussian",
+  model_name = "first_model"
+)
+
+print(model_spec)
+```
+
+### Step 3: Set Up Priors
+
+```{r first-analysis-priors}
+# Create informative but reasonable priors
+priors <- PriorSpecification()
+
+# Treatment effect: expecting small to moderate effect
+priors <- add_prior(priors, "b_treatment", "normal", 0, 2.5)
+
+# Age effect: expecting small effect
+priors <- add_prior(priors, "b_age_centered", "normal", 0, 1.0)
+
+# Intercept: centered around expected outcome value
+priors <- add_prior(priors, "Intercept", "normal", 10, 5)
+
+# Residual standard deviation: half-Cauchy (converted to student_t)
+priors <- add_prior(priors, "sigma", "half_cauchy", NA, 5, 0)
+
+print(priors)
+
+# Attach priors to model specification
+attr(model_spec, "priors") <- priors
+```
+
+### Step 4: Fit the Model
+
+```{r first-analysis-fit}
+# Fit the Bayesian model
+# Using conservative settings for first run
+result <- fit_model(
+  model_spec = model_spec,
+  data = trial_data,
+  chains = 2,      # Start with 2 chains
+  iter = 1000,     # 500 warmup + 500 sampling per chain
+  cores = 1        # Use 1 core initially
+)
+
+# Print model summary
+print(result)
+```
+
+### Step 5: Check Diagnostics
+
+```{r first-analysis-diagnostics}
+# Check convergence and diagnostics
+diagnostics <- check_diagnostics(result)
+print(diagnostics)
+
+# Extract parameter estimates
+estimates <- extract_estimates(result)
+print(estimates)
+```
+
+### Step 6: Visualize Results
+
+```{r first-analysis-plots, fig.width=7, fig.height=5}
+# Plot posterior distributions
+plot_posterior(result, variables = c("b_treatment", "b_age_centered"))
+
+# Create forest plot
+forest_plot <- plot_forest(estimates)
+print(forest_plot)
+```
+
+## Understanding Your Results
+
+### Interpreting Estimates
+
+The `extract_estimates()` function returns:
+
+- **Estimate**: Posterior mean
+- **Est.Error**: Posterior standard deviation  
+- **Q2.5**, **Q97.5**: 95% credible interval bounds
+- **Rhat**: Convergence diagnostic (should be ≈ 1.00)
+- **Bulk_ESS**, **Tail_ESS**: Effective sample sizes
+
+### Key Diagnostics to Check
+
+1. **Rhat**: Should be < 1.01 for all parameters
+2. **ESS**: Should be > 400 for reliable estimates
+3. **Divergences**: Should be 0 (or very few)
+4. **Energy**: BFMI should be > 0.2
+
+## Common Issues and Solutions
+
+### Installation Problems
+
+**Problem**: Stan compilation fails
+**Solution**: 
+```{r troubleshoot-compilation}
+# Check compiler tools
+Sys.which("make")
+Sys.which("g++")  # Linux/Mac
+Sys.which("gcc")  # Windows with Rtools
+
+# If empty, install/reinstall compiler tools
+```
+
+**Problem**: Package installation fails
+**Solution**:
+```{r troubleshoot-install}
+# Update R and try again
+install.packages(c("devtools", "brms", "rstan"))
+devtools::install_github("AartikSarma/bayestrials")
+```
+
+### Model Fitting Issues
+
+**Problem**: Model won't converge (high Rhat)
+**Solutions**:
+```{r troubleshoot-convergence}
+# Increase iterations
+result <- fit_model(model_spec, data, iter = 4000)
+
+# Increase adapt_delta
+result <- fit_model(model_spec, data, control = list(adapt_delta = 0.99))
+
+# Check for data issues
+summary(trial_data)  # Look for outliers, missing values
+```
+
+**Problem**: Slow fitting
+**Solutions**:
+```{r troubleshoot-speed}
+# Use more cores (if available)
+result <- fit_model(model_spec, data, cores = 4)
+
+# Start with smaller dataset
+small_data <- trial_data[1:50, ]
+result <- fit_model(model_spec, small_data)
+```
+
+### Prior Specification Issues
+
+**Problem**: Understanding prior conversion
+```{r troubleshoot-priors}
+# Check how priors are converted
+priors <- PriorSpecification()
+priors <- add_prior(priors, "sigma", "half_cauchy", NA, 5, 0)
+brms_priors <- to_brms_prior(priors)
+print(brms_priors)  # Shows student_t(3, 0, 5)
+```
+
+## Next Steps
+
+Once you have a working model:
+
+1. **Experiment with different priors** - Try skeptical vs. optimistic priors
+2. **Add more predictors** - Include additional covariates  
+3. **Try different model families** - Binary outcomes (binomial), count data (Poisson)
+4. **Conduct sensitivity analyses** - Compare results across different specifications
+5. **Work with real data** - Apply to your actual clinical trial data
+
+## Advanced Topics
+
+For more advanced analyses, see additional vignettes:
+
+- **Prior Specification Guide**: Detailed prior selection strategies
+- **Model Diagnostics**: Advanced convergence checking
+- **Sensitivity Analysis**: Comparing multiple model specifications  
+- **Multi-trial Analysis**: Analyzing multiple studies together
+
+## Getting Help
+
+If you encounter issues:
+
+1. Check this vignette first
+2. Review function documentation: `?function_name`
+3. Browse other vignettes: `browseVignettes("bayestrials")`
+4. Report bugs: [GitHub Issues](https://github.com/AartikSarma/bayestrials/issues)
+
+```{r session-info}
+sessionInfo()
+```

@@ -206,8 +206,8 @@ to_brms_prior <- function(prior_spec, formula = NULL) {
     formula <- build_formula(formula)
   }
   
-  # Create list of brms priors
-  prior_list <- list()
+  # Create brms priors directly without intermediate list
+  combined_priors <- NULL
   
   for (i in 1:nrow(prior_spec$priors)) {
     row <- prior_spec$priors[i, ]
@@ -228,7 +228,13 @@ to_brms_prior <- function(prior_spec, formula = NULL) {
     } else if (row$distribution == "uniform") {
       if (!is.na(row$lb)) prior_string <- paste0(prior_string, row$lb)
       if (!is.na(row$ub)) prior_string <- paste0(prior_string, ", ", row$ub)
-    } else if (row$distribution %in% c("half_normal", "half_cauchy", "half_student_t")) {
+    } else if (row$distribution == "half_normal") {
+      if (!is.na(row$scale)) prior_string <- paste0(prior_string, "0, ", row$scale)
+    } else if (row$distribution == "half_cauchy") {
+      # brms uses student_t(1, 0, scale) for half-Cauchy
+      prior_string <- "student_t(3, 0, "
+      if (!is.na(row$scale)) prior_string <- paste0(prior_string, row$scale)
+    } else if (row$distribution == "half_student_t") {
       if (!is.na(row$scale)) prior_string <- paste0(prior_string, "0, ", row$scale)
     } else if (row$distribution == "lognormal") {
       if (!is.na(row$location)) prior_string <- paste0(prior_string, row$location)
@@ -237,57 +243,38 @@ to_brms_prior <- function(prior_spec, formula = NULL) {
     
     prior_string <- paste0(prior_string, ")")
     
-    # Add lb/ub if not part of the distribution
-    if (!row$distribution %in% c("uniform", "beta") && 
-        (!is.na(row$lb) || !is.na(row$ub))) {
-      
-      if (!is.na(row$lb)) prior_string <- paste0(prior_string, ", lb = ", row$lb)
-      if (!is.na(row$ub)) prior_string <- paste0(prior_string, ", ub = ", row$ub)
+    # Skip adding bounds to prior string - half_cauchy and similar already have implicit bounds
+    
+    # Create brms prior object directly using eval() to avoid NSE issues
+    # Handle different parameter classes
+    if (!is.na(param_info$class) && param_info$class == "b" && !is.na(param_info$coef)) {
+      prior_obj <- eval(call("prior", prior_string, class = "b", coef = param_info$coef), 
+                       envir = asNamespace("brms"))
+    } else if (!is.na(param_info$class) && param_info$class == "Intercept") {
+      prior_obj <- eval(call("prior", prior_string, class = "Intercept"), 
+                       envir = asNamespace("brms"))
+    } else if (!is.na(param_info$class) && param_info$class %in% c("sigma", "shape", "nu", "phi")) {
+      prior_obj <- eval(call("prior", prior_string, class = param_info$class), 
+                       envir = asNamespace("brms"))
+    } else if (!is.na(param_info$class) && param_info$class == "sd" && !is.na(param_info$group)) {
+      prior_obj <- eval(call("prior", prior_string, class = "sd", group = param_info$group), 
+                       envir = asNamespace("brms"))
+    } else {
+      # Default case - use class if available, otherwise default to "b"
+      class_to_use <- if (!is.na(param_info$class)) param_info$class else "b"
+      prior_obj <- eval(call("prior", prior_string, class = class_to_use), 
+                       envir = asNamespace("brms"))
     }
     
-    # Create brms prior
-    prior_list[[i]] <- list(
-      prior = prior_string,
-      class = param_info$class,
-      coef = param_info$coef,
-      group = param_info$group
-    )
+    # Combine priors
+    if (is.null(combined_priors)) {
+      combined_priors <- prior_obj
+    } else {
+      combined_priors <- combined_priors + prior_obj
+    }
   }
   
-  # Convert to data frame
-  prior_df <- do.call(rbind, lapply(prior_list, as.data.frame, stringsAsFactors = FALSE))
-  
-  # Get default priors if formula is provided
-  if (!is.null(formula)) {
-    if (is.character(formula)) {
-      formula <- stats::as.formula(formula)
-    }
-    
-    # Get default priors from brms
-    default_priors <- brms::get_prior(formula, data = NULL)
-    
-    # Combine with specified priors
-    for (i in 1:nrow(prior_df)) {
-      row <- prior_df[i, ]
-      
-      # Find matching rows in default priors
-      match_idx <- which(
-        (is.na(row$class) | default_priors$class == row$class) &
-        (is.na(row$coef) | default_priors$coef == row$coef) &
-        (is.na(row$group) | default_priors$group == row$group)
-      )
-      
-      if (length(match_idx) > 0) {
-        default_priors$prior[match_idx] <- row$prior
-      } else {
-        default_priors <- rbind(default_priors, row)
-      }
-    }
-    
-    return(default_priors)
-  } else {
-    return(prior_df)
-  }
+  return(combined_priors)
 }
 
 #' Parse parameter name into components
@@ -537,10 +524,20 @@ construct_parameter_name <- function(row) {
 #' @keywords internal
 auto_scale_priors <- function(prior_specs, formula, data) {
   # Extract response variable from formula
-  if (inherits(formula, "brmsformula")) {
-    response_var <- all.vars(formula$formula[[2]])
-  } else {
-    response_var <- all.vars(stats::as.formula(formula)[[2]])
+  response_var <- tryCatch({
+    if (inherits(formula, "brmsformula")) {
+      all.vars(formula$formula[[2]])
+    } else {
+      all.vars(stats::as.formula(formula)[[2]])
+    }
+  }, error = function(e) {
+    cli::cli_warn("Could not extract response variable from formula: {e$message}")
+    return(NULL)
+  })
+  
+  # If response variable extraction failed, return unchanged priors
+  if (is.null(response_var)) {
+    return(prior_specs)
   }
   
   # Calculate response scale

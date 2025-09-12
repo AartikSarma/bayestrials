@@ -3,9 +3,9 @@
 \docType{package}
 \name{bayestrials-package}
 \alias{bayestrials-package}
-\title{bayestrials: A Robust Framework for Bayesian Clinical Trial Reanalysis}
+\title{bayestrials: A Comprehensive Framework for Reproducible Bayesian Clinical Trial Analysis}
 \description{
-A comprehensive R package designed for Bayesian reanalysis of clinical trials, combining the statistical power of 'brms' with the workflow efficiency of 'tidyverse'. The package enables systematic model specification, flexible parameter definition, and powerful visualization capabilities while maintaining reproducibility.
+A comprehensive R package for reproducible Bayesian analyses of clinical datasets using brms. The package enables systematic prior specification in a standardized tibble format, supports multiple model configurations (Gaussian, Binomial, Poisson, etc.), and provides automated model fitting with parallel processing. Features include comprehensive convergence diagnostics, rich visualizations, automated report generation, and robust model comparison capabilities for clinical trial analyses.
 
 The bayestrials package provides a comprehensive framework for Bayesian
 reanalysis of clinical trials, combining the statistical power of 'brms'

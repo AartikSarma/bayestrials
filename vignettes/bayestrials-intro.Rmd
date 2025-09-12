@@ -13,13 +13,17 @@ vignette: >
 knitr::opts_chunk$set(
   collapse = TRUE,
   comment = "#>",
-  eval = FALSE
+  eval = TRUE,
+  message = FALSE,
+  warning = FALSE,
+  fig.width = 7,
+  fig.height = 5
 )
 ```
 
 ## Introduction
 
-The `bayestrials` package provides a comprehensive framework for Bayesian reanalysis of clinical trials. This vignette introduces the basic workflow and demonstrates key features of the package.
+The `bayestrials` package provides a comprehensive framework for Bayesian analysis of clinical trials using the [brms](https://paul-buerkner.github.io/brms/) backend. This vignette introduces the basic workflow and demonstrates key features with working examples.
 
 ```{r setup}
 library(bayestrials)
@@ -27,43 +31,60 @@ library(bayestrials)
 
 ## Basic Workflow
 
-### 1. Model Specification
+### 1. Generate Example Data
 
-One of the key features of `bayestrials` is the ability to specify models using CSV files. Here's an example model specification:
+Let's start with generating some synthetic clinical trial data for demonstration:
 
-```{r}
-# Read model specifications from CSV files
-model_specs <- read_model_spec(
-  system.file("extdata", "model_specs.csv", package = "bayestrials"),
-  system.file("extdata", "prior_specs.csv", package = "bayestrials"),
-  system.file("extdata", "covariate_specs.csv", package = "bayestrials")
+```{r generate-data}
+set.seed(42)
+data <- generate_synthetic_data(
+  n_observations = 100,  # Small dataset for quick compilation
+  outcome_type = "continuous",
+  seed = 42
 )
 
-# Look at the primary model
-model_specs$primary_model
+# Look at the data structure
+head(data)
+str(data)
 ```
 
-You can also create model specifications programmatically:
+### 2. Model Specification
 
-```{r}
-# Create a model specification
-my_model <- create_model_spec(
-  outcome = "response",
-  predictors = "treatment + age + sex",
-  random_effects = "(1|center)",
-  family = "bernoulli",
-  link = "logit",
-  model_name = "my_custom_model"
+Create a model specification programmatically:
+
+```{r model-spec}
+# Create a simple linear regression model
+model_spec <- create_model_spec(
+  outcome = "outcome_continuous",
+  predictors = "treatment + age_centered + baseline_severity_centered",
+  family = "gaussian",
+  model_name = "simple_trial_model"
 )
 
-# Specify priors
-my_priors <- PriorSpecification()
-my_priors <- add_prior(my_priors, "b_treatment", "normal", 0, 1)
-my_priors <- add_prior(my_priors, "b_age", "normal", 0, 2)
-my_priors <- add_prior(my_priors, "sd_center", "half_cauchy", NA, 5, 0)
+print(model_spec)
+```
+
+### 3. Prior Specification
+
+Specify informative priors using the `PriorSpecification` system:
+
+```{r priors}
+# Create priors
+priors <- PriorSpecification()
+priors <- add_prior(priors, "b_treatment", "normal", 0, 2.5)
+priors <- add_prior(priors, "b_age_centered", "normal", 0, 1)
+priors <- add_prior(priors, "b_baseline_severity_centered", "normal", 0, 2)
+priors <- add_prior(priors, "Intercept", "normal", 0, 10)
+priors <- add_prior(priors, "sigma", "half_cauchy", NA, 5, 0)
+
+print(priors)
+
+# See how priors are converted for brms
+brms_priors <- to_brms_prior(priors)
+print(brms_priors)
 
 # Attach priors to model
-attr(my_model, "priors") <- my_priors
+attr(model_spec, "priors") <- priors
 ```
 
 ### 2. Data Preparation
@@ -120,86 +141,87 @@ harmonized_trials <- harmonize_trials(
 )
 ```
 
-### 3. Fitting Models
+### 4. Fitting the Bayesian Model
 
-Once you have prepared your data and specified your model, you can fit it using `fit_model()`:
+Now let's fit the model using the brms backend:
 
-```{r}
-# Fit model
-model <- fit_model(model_specs$primary_model, preprocessed_data)
-
-# Check model
-model
-```
-
-For sensitivity analyses, you can fit multiple models with different specifications:
-
-```{r}
-# Define sensitivity specifications
-sensitivity_specs <- list(
-  model_specs$primary_model,
-  model_specs$sensitivity_1
+```{r fit-model}
+# Fit the model (using minimal settings for speed)
+model <- fit_model(
+  model_spec = model_spec,
+  data = data,
+  chains = 1,      # Single chain for speed
+  iter = 500,      # Fewer iterations for demo
+  cores = 1        # Single core for reproducibility
 )
 
-# Run sensitivity analyses
-sensitivity_results <- run_sensitivity_analyses(
-  model,
-  preprocessed_data,
-  sensitivity_specs,
-  type = "model"
-)
+# Check the fitted model
+print(model)
 ```
 
-### 4. Analyzing Results
+### 5. Model Diagnostics
 
-`bayestrials` provides functions for extracting and visualizing model results:
+Check convergence and model diagnostics:
 
-```{r}
-# Extract posterior summaries
-posterior_summary(model)
-
-# Plot posterior distribution
-plot_posterior(model, variables = "b_treatment")
-
-# Check model diagnostics
+```{r diagnostics}
+# Check diagnostics
 diagnostics <- check_diagnostics(model)
+print(diagnostics)
+
+# Extract estimates
+estimates <- extract_estimates(model)
+print(estimates)
 ```
 
-### 5. Identifying Effect Modifiers
+### 6. Visualizing Results
 
-You can test for treatment effect heterogeneity:
+Create visualizations of the posterior distributions and results:
 
-```{r}
-# Identify effect modifiers
-modifiers <- identify_effect_modifiers(
-  model,
-  preprocessed_data,
-  treatment_var = "treatment",
-  candidate_modifiers = c("age", "sex")
-)
+```{r visualizations}
+# Plot posterior distribution for treatment effect
+plot_posterior(model, variables = c("b_treatment"))
 
-# Plot interaction
-plot_interaction(modifiers, "age")
+# Create forest plot of estimates  
+forest_plot <- plot_forest(estimates)
+print(forest_plot)
 ```
 
-### 6. Generating Reports
+## Key Features of bayestrials
 
-`bayestrials` can generate comprehensive reports for models:
+### Prior Conversion System
 
-```{r}
-# Generate basic report
-report_file <- generate_report(model, template = "basic_report")
+bayestrials automatically handles prior conversion for brms compatibility:
 
-# Generate sensitivity report
-sensitivity_report_file <- sensitivity_report(sensitivity_results)
+```{r prior-conversion}
+# half_cauchy priors are automatically converted to student_t
+original_prior <- PriorSpecification()
+original_prior <- add_prior(original_prior, "sigma", "half_cauchy", NA, 5, 0)
+
+converted <- to_brms_prior(original_prior)
+print(converted)
 ```
 
-## Conclusion
+### Built-in Diagnostics
 
-This vignette provided a brief introduction to the `bayestrials` package. For more detailed examples and advanced features, please refer to the other vignettes and function documentation.
+The package provides comprehensive model checking:
+
+```{r model-summary}
+# Get posterior summary
+summary_stats <- posterior_summary(model)
+head(summary_stats)
+```
+
+## Next Steps
+
+This vignette covered the basic workflow for fitting a single Bayesian model. For more advanced features, explore:
+
+- **Sensitivity Analysis**: Comparing models with different prior specifications
+- **Multi-trial Analysis**: Harmonizing and analyzing multiple clinical trials
+- **Effect Modifiers**: Identifying treatment effect heterogeneity
+- **Custom Priors**: Advanced prior specification techniques
 
 ## Session Info
 
-```{r}
+```{r session-info}
 sessionInfo()
 ```

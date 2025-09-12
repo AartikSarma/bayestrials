@@ -1,0 +1,6 @@
+parameter,distribution,location,scale,lb,ub
+b_treatment,normal,0,2.5,NA,NA
+b_age,normal,0,1.0,NA,NA
+b_baseline_severity,normal,0,2.0,NA,NA
+Intercept,normal,0,10,NA,NA
+sigma,half_cauchy,NA,5,0,NA

@@ -1,0 +1,388 @@
+---
+title: "Prior Specification Guide"
+author: "bayestrials Team"
+date: "`r Sys.Date()`"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Prior Specification Guide}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  eval = FALSE,
+  fig.width = 7,
+  fig.height = 5
+)
+```
+
+# Prior Specification in bayestrials
+
+This guide covers everything you need to know about specifying priors in bayestrials, from basic concepts to advanced techniques.
+
+```{r setup}
+library(bayestrials)
+```
+
+## Understanding Priors in bayestrials
+
+### The PriorSpecification System
+
+bayestrials uses a structured approach to prior specification that:
+
+1. **Validates** prior specifications before model fitting
+2. **Converts** priors to the appropriate brms format
+3. **Documents** your prior choices for reproducibility
+4. **Enables** easy sensitivity analyses
+
+```{r basic-prior-system}
+# Create a PriorSpecification object
+priors <- PriorSpecification()
+print(priors)
+
+# Add priors one by one
+priors <- add_prior(priors, "b_treatment", "normal", 0, 2.5)
+priors <- add_prior(priors, "Intercept", "normal", 0, 10)
+
+print(priors)
+```
+
+### Supported Distributions
+
+bayestrials supports all major prior distributions:
+
+```{r supported-distributions}
+# Normal priors (most common)
+priors <- PriorSpecification()
+priors <- add_prior(priors, "b_treatment", "normal", location = 0, scale = 1.5)
+
+# Student-t priors (robust to outliers)
+priors <- add_prior(priors, "b_age", "student_t", location = 0, scale = 1, df = 3)
+
+# Half-Cauchy priors (for scale parameters)
+priors <- add_prior(priors, "sigma", "half_cauchy", location = NA, scale = 5, lb = 0)
+
+# Gamma priors (for positive parameters)
+priors <- add_prior(priors, "shape", "gamma", location = 2, scale = 0.5)
+
+# Beta priors (for probabilities)
+priors <- add_prior(priors, "p", "beta", location = 2, scale = 5)
+
+print(priors)
+```
+
+## Prior Selection Strategies
+
+### Weakly Informative Priors (Recommended)
+
+Weakly informative priors provide gentle regularization without overwhelming the data:
+
+```{r weakly-informative}
+# For treatment effects (typically small to moderate)
+treatment_prior <- PriorSpecification()
+treatment_prior <- add_prior(treatment_prior, "b_treatment", "normal", 0, 2.5)
+
+# For continuous predictors (standardized)
+treatment_prior <- add_prior(treatment_prior, "b_age", "normal", 0, 1.0)
+
+# For intercepts (based on outcome scale)
+treatment_prior <- add_prior(treatment_prior, "Intercept", "normal", 50, 20)
+
+# For residual SD (half-Cauchy with reasonable scale)
+treatment_prior <- add_prior(treatment_prior, "sigma", "half_cauchy", NA, 5, 0)
+
+print(treatment_prior)
+```
+
+### Informative Priors (Expert Knowledge)
+
+When you have prior knowledge or strong clinical beliefs:
+
+```{r informative-priors}
+# Strong belief in treatment effect
+informative_priors <- PriorSpecification()
+
+# Expect positive treatment effect around 3 units
+informative_priors <- add_prior(informative_priors, "b_treatment", "normal", 3, 1)
+
+# Age effect based on literature
+informative_priors <- add_prior(informative_priors, "b_age", "normal", -0.1, 0.05)
+
+# Tight prior on intercept
+informative_priors <- add_prior(informative_priors, "Intercept", "normal", 45, 5)
+
+print(informative_priors)
+```
+
+### Skeptical Priors (Conservative Analysis)
+
+For skeptical analyses or regulatory submissions:
+
+```{r skeptical-priors}
+# Skeptical about treatment effects
+skeptical_priors <- PriorSpecification()
+
+# Prior centered on null effect with tight variance
+skeptical_priors <- add_prior(skeptical_priors, "b_treatment", "normal", 0, 0.5)
+
+# Minimal effects for other predictors
+skeptical_priors <- add_prior(skeptical_priors, "b_age", "normal", 0, 0.25)
+
+# Standard intercept
+skeptical_priors <- add_prior(skeptical_priors, "Intercept", "normal", 50, 10)
+
+print(skeptical_priors)
+```
+
+## Parameter-Specific Guidelines
+
+### Treatment Effects
+
+```{r treatment-effect-priors}
+# Binary treatment coding (0/1)
+# Effect size interpretation depends on outcome scale
+
+# Continuous outcomes (difference in means)
+priors <- PriorSpecification()
+priors <- add_prior(priors, "b_treatment", "normal", 0, 2.5)  # Allows ±5 unit effects
+
+# Binary outcomes (log-odds)
+priors <- add_prior(priors, "b_treatment", "normal", 0, 1.5)   # Allows ORs ~0.2 to 5
+
+# Count outcomes (log-rate ratio)  
+priors <- add_prior(priors, "b_treatment", "normal", 0, 1.0)   # Allows rate ratios ~0.4 to 2.7
+```
+
+### Covariate Effects
+
+```{r covariate-priors}
+# Standardized continuous covariates
+priors <- PriorSpecification()
+
+# Age, BMI, etc. (typically small effects)
+priors <- add_prior(priors, "b_age_std", "normal", 0, 0.5)
+
+# Binary covariates (sex, comorbidity)
+priors <- add_prior(priors, "b_male", "normal", 0, 1.0)
+
+# Categorical covariates (site, severity level)
+priors <- add_prior(priors, "b_site2", "normal", 0, 1.5)
+priors <- add_prior(priors, "b_site3", "normal", 0, 1.5)
+```
+
+### Scale Parameters
+
+```{r scale-parameters}
+# Residual standard deviation (continuous outcomes)
+priors <- PriorSpecification()
+priors <- add_prior(priors, "sigma", "half_cauchy", NA, 5, 0)
+
+# Random effect standard deviations
+priors <- add_prior(priors, "sd_site", "half_cauchy", NA, 2.5, 0)
+
+# Overdispersion parameters (negative binomial)
+priors <- add_prior(priors, "shape", "gamma", 0.01, 0.01)
+```
+
+## Prior Conversion System
+
+### How bayestrials Handles Priors
+
+bayestrials automatically converts your prior specifications to brms format:
+
+```{r prior-conversion}
+# Your specification
+my_priors <- PriorSpecification()
+my_priors <- add_prior(my_priors, "sigma", "half_cauchy", NA, 5, 0)
+
+# What brms sees (automatic conversion)
+brms_format <- to_brms_prior(my_priors)
+print(brms_format)
+# Shows: student_t(3, 0, 5) - equivalent to half-Cauchy!
+```
+
+### Common Conversions
+
+```{r common-conversions}
+# Half-Cauchy → Student-t (bounded)
+half_cauchy <- add_prior(PriorSpecification(), "sigma", "half_cauchy", NA, 2.5, 0)
+print(to_brms_prior(half_cauchy))
+
+# Normal → Normal (unchanged)
+normal_prior <- add_prior(PriorSpecification(), "b_x", "normal", 0, 1)
+print(to_brms_prior(normal_prior))
+
+# Student-t → Student-t (with df parameter)
+t_prior <- add_prior(PriorSpecification(), "b_x", "student_t", 0, 1, df = 3)
+print(to_brms_prior(t_prior))
+```
+
+## Sensitivity Analysis with Priors
+
+### Comparing Prior Specifications
+
+```{r sensitivity-setup}
+# Generate example data
+data <- generate_synthetic_data(n_observations = 100, seed = 123)
+
+# Base model specification
+model_spec <- create_model_spec(
+  outcome = "outcome_continuous",
+  predictors = "treatment + age_centered",
+  family = "gaussian"
+)
+```
+
+```{r sensitivity-priors}
+# Define different prior sets
+neutral_priors <- PriorSpecification()
+neutral_priors <- add_prior(neutral_priors, "b_treatment", "normal", 0, 2.5)
+neutral_priors <- add_prior(neutral_priors, "b_age_centered", "normal", 0, 1.0)
+neutral_priors <- add_prior(neutral_priors, "Intercept", "normal", 10, 5)
+neutral_priors <- add_prior(neutral_priors, "sigma", "half_cauchy", NA, 5, 0)
+
+skeptical_priors <- PriorSpecification()  
+skeptical_priors <- add_prior(skeptical_priors, "b_treatment", "normal", 0, 1.0)
+skeptical_priors <- add_prior(skeptical_priors, "b_age_centered", "normal", 0, 0.5)
+skeptical_priors <- add_prior(skeptical_priors, "Intercept", "normal", 10, 5)
+skeptical_priors <- add_prior(skeptical_priors, "sigma", "half_cauchy", NA, 5, 0)
+
+optimistic_priors <- PriorSpecification()
+optimistic_priors <- add_prior(optimistic_priors, "b_treatment", "normal", 2, 1.5)
+optimistic_priors <- add_prior(optimistic_priors, "b_age_centered", "normal", 0, 1.0) 
+optimistic_priors <- add_prior(optimistic_priors, "Intercept", "normal", 10, 5)
+optimistic_priors <- add_prior(optimistic_priors, "sigma", "half_cauchy", NA, 5, 0)
+```
+
+```{r sensitivity-fitting}
+# Fit models with different priors
+attr(model_spec, "priors") <- neutral_priors
+neutral_model <- fit_model(model_spec, data, chains = 1, iter = 500)
+
+attr(model_spec, "priors") <- skeptical_priors  
+skeptical_model <- fit_model(model_spec, data, chains = 1, iter = 500)
+
+attr(model_spec, "priors") <- optimistic_priors
+optimistic_model <- fit_model(model_spec, data, chains = 1, iter = 500)
+```
+
+```{r sensitivity-comparison}
+# Compare treatment effect estimates
+neutral_est <- extract_estimates(neutral_model)["b_treatment", "Estimate"]
+skeptical_est <- extract_estimates(skeptical_model)["b_treatment", "Estimate"] 
+optimistic_est <- extract_estimates(optimistic_model)["b_treatment", "Estimate"]
+
+print(paste("Neutral:", round(neutral_est, 2)))
+print(paste("Skeptical:", round(skeptical_est, 2)))
+print(paste("Optimistic:", round(optimistic_est, 2)))
+```
+
+## Best Practices
+
+### 1. Start with Weakly Informative Priors
+
+```{r best-practice-1}
+# Good default approach
+standard_priors <- PriorSpecification()
+standard_priors <- add_prior(standard_priors, "b_treatment", "normal", 0, 2.5)
+standard_priors <- add_prior(standard_priors, "Intercept", "normal", 0, 10)
+standard_priors <- add_prior(standard_priors, "sigma", "half_cauchy", NA, 5, 0)
+```
+
+### 2. Document Your Prior Choices
+
+```{r best-practice-2}
+# Always document reasoning
+# For treatment effect: Normal(0, 2.5) allows effects up to ±5 units
+# which covers clinically meaningful range for this outcome
+
+# For intercept: Normal(0, 10) is vague but prevents extreme values
+# For sigma: Half-Cauchy(0, 5) is standard weakly informative choice
+```
+
+### 3. Check Prior Sensitivity
+
+```{r best-practice-3}
+# Always run sensitivity analyses
+# Compare neutral vs. skeptical priors
+# Ensure conclusions are robust to prior choice
+```
+
+### 4. Visualize Your Priors
+
+```{r prior-visualization}
+# Plot prior distributions to understand implications
+plot_priors(standard_priors, model_spec)
+```
+
+## Advanced Prior Specification
+
+### Hierarchical Priors
+
+```{r hierarchical-priors}
+# For random effects models
+hierarchical_priors <- PriorSpecification()
+
+# Fixed effects
+hierarchical_priors <- add_prior(hierarchical_priors, "b_treatment", "normal", 0, 2.5)
+
+# Random effect standard deviations  
+hierarchical_priors <- add_prior(hierarchical_priors, "sd_site", "half_cauchy", NA, 2.5, 0)
+
+# Correlations (LKJ prior)
+hierarchical_priors <- add_prior(hierarchical_priors, "cor_site", "lkj", 2, NA)
+```
+
+### Custom Prior Functions
+
+For complex priors not covered by standard distributions:
+
+```{r custom-priors}
+# Example: Mixture of normals for bimodal prior
+# This would require custom Stan code - contact package maintainers
+```
+
+## Troubleshooting
+
+### Common Prior Issues
+
+**Problem**: Model won't fit with specific priors
+```{r troubleshoot-priors}
+# Check prior conversion
+problematic_priors <- PriorSpecification()
+problematic_priors <- add_prior(problematic_priors, "b_x", "normal", 0, 0.001)  # Too tight!
+
+# Diagnosis
+brms_version <- to_brms_prior(problematic_priors)
+print(brms_version)  # Check if reasonable
+
+# Solution: Use more reasonable scale
+fixed_priors <- PriorSpecification()
+fixed_priors <- add_prior(fixed_priors, "b_x", "normal", 0, 1.0)  # Better!
+```
+
+**Problem**: Prior-data conflict warnings
+```{r prior-data-conflict}
+# Highly informative prior conflicts with data
+# Either:
+# 1. Relax the prior
+# 2. Investigate data quality  
+# 3. Accept the conflict and proceed with caution
+```
+
+## Summary
+
+Key takeaways for prior specification in bayestrials:
+
+1. **Start simple**: Use weakly informative priors
+2. **Document choices**: Explain your reasoning
+3. **Check sensitivity**: Compare different prior sets
+4. **Trust the conversion**: bayestrials handles brms formatting
+5. **Visualize**: Plot priors to understand their implications
+
+```{r session-info}
+sessionInfo()
+```

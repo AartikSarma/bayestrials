@@ -64,10 +64,7 @@ set_seed <- function(seed = NULL) {
   
   set.seed(seed)
   
-  # Also set Stan seed (if rstan is loaded)
-  if (requireNamespace("rstan", quietly = TRUE)) {
-    rstan::set_rstan_seed(seed)
-  }
+  # For brms/Stan, seed is passed to the sampling function directly
   
   invisible(seed)
 }

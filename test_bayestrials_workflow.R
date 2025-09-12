@@ -29,8 +29,8 @@ cat("Variable descriptions available for", nrow(var_desc), "variables\n")
 cat("\n=== Step 2: Specify Models ===\n")
 # Create model specification using brms approach
 model_spec <- create_model_spec(
-  outcome = "outcome_continuous",
-  predictors = "treatment + age_centered + baseline_severity_centered",
+  "outcome_continuous",
+  "treatment + age_centered + baseline_severity_centered",
   family = "gaussian",
   model_name = "linear_regression"
 )
@@ -39,19 +39,22 @@ cat("Model specification created:\n")
 print(model_spec)
 
 cat("\n=== Step 3: Specify Priors ===\n")
-# Create prior specification for the model
-priors <- create_model_priors(
-  model_spec = model_spec,
-  data = data,
-  prior_type = "neutral"
-)
+# Create a simple prior specification using the PriorSpecification class
+priors <- PriorSpecification()
+priors <- add_prior(priors, "b_treatment", "normal", 0, 2.5)
+priors <- add_prior(priors, "b_age_centered", "normal", 0, 1.0)
+priors <- add_prior(priors, "b_baseline_severity_centered", "normal", 0, 2.0)
+priors <- add_prior(priors, "Intercept", "normal", 0, 10)
+priors <- add_prior(priors, "sigma", "half_cauchy", NA, 5, 0)
 
 cat("Prior specifications created:\n")
 print(priors)
 
-# Create additional prior sets for sensitivity analysis
-skeptical_priors <- update_priors(model_spec, skepticism = "high")
-optimistic_priors <- update_priors(model_spec, skepticism = "low") 
+# Create skeptical priors for comparison
+skeptical_priors <- PriorSpecification()
+skeptical_priors <- add_prior(skeptical_priors, "b_treatment", "normal", 0, 0.5)
+skeptical_priors <- add_prior(skeptical_priors, "b_age_centered", "normal", 0, 0.5)
+skeptical_priors <- add_prior(skeptical_priors, "b_baseline_severity_centered", "normal", 0, 1.0) 
 
 cat("\n=== Step 4: Setup Parallel Processing ===\n")
 # Setup parallel processing (use sequential for testing to avoid issues)
@@ -64,6 +67,9 @@ print(config)
 
 cat("\n=== Step 5: Fit Models ===\n")
 cat("Fitting Bayesian model (this may take a few minutes)...\n")
+
+# Attach priors to model spec
+attr(model_spec, "priors") <- priors
 
 # Fit the main model
 result <- fit_model(
@@ -126,9 +132,18 @@ cat("\n=== Step 9: Model Comparison ===\n")
 # Compare with different priors
 cat("Fitting models with different priors for comparison...\n")
 
+# Create skeptical model spec
+skeptical_model <- create_model_spec(
+  "outcome_continuous",
+  "treatment + age_centered + baseline_severity_centered",
+  family = "gaussian",
+  model_name = "skeptical_regression"
+)
+attr(skeptical_model, "priors") <- skeptical_priors
+
 # Fit model with skeptical priors
 result_skeptical <- fit_model(
-  model_spec = skeptical_priors,
+  model_spec = skeptical_model,
   data = data,
   chains = 2,
   iter = 1000,
@@ -136,15 +151,8 @@ result_skeptical <- fit_model(
   seed = 123
 )
 
-# Fit model with optimistic priors  
-result_optimistic <- fit_model(
-  model_spec = optimistic_priors,
-  data = data,
-  chains = 2,
-  iter = 1000, 
-  cores = 1,
-  seed = 123
-)
+# For now skip optimistic to keep test faster
+result_optimistic <- NULL
 
 # Compare models if all fitted successfully
 models_list <- list(

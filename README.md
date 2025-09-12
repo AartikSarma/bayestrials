@@ -22,20 +22,46 @@ BayesTrials provides a standardized framework for conducting Bayesian clinical t
 
 ## Installation
 
-You can install the development version of bayestrials from GitHub:
+### System Requirements
+
+Before installing bayestrials, ensure you have:
+
+- **R** (≥ 4.0.0)
+- **C++ compiler** for Stan compilation:
+  - **macOS**: Install Xcode Command Line Tools: `xcode-select --install`
+  - **Windows**: Install [Rtools](https://cran.r-project.org/bin/windows/Rtools/)
+  - **Linux**: Install `g++` and related development tools
+
+### Package Installation
 
 ```r
-# install.packages("devtools")
+# Install development version from GitHub
+if (!require("devtools")) install.packages("devtools")
 devtools::install_github("AartikSarma/bayestrials")
+
+# Load the package
+library(bayestrials)
 ```
+
+### Key Dependencies
+
+bayestrials uses [brms](https://paul-buerkner.github.io/brms/) (Bayesian Regression Models using Stan) as its modeling backend. This provides:
+- Robust Stan model compilation and caching
+- Comprehensive family support (Gaussian, Binomial, Poisson, etc.)
+- Advanced model diagnostics and convergence checking
 
 ## Quick Start
 
 ```r
 library(bayestrials)
 
-# 1. Generate or load your clinical data
-data <- generate_synthetic_data(n_observations = 1000, seed = 123)
+# 1. Generate synthetic clinical trial data
+set.seed(123)
+data <- generate_synthetic_data(
+  n_observations = 200,    # Start smaller for quicker testing
+  outcome_type = "continuous",
+  seed = 123
+)
 
 # 2. Create model specification
 model_spec <- create_model_spec(
@@ -45,33 +71,48 @@ model_spec <- create_model_spec(
   model_name = "linear_regression"
 )
 
-# 3. Specify priors
-priors <- create_model_priors(
-  model_spec = model_spec,
-  data = data,
-  prior_type = "neutral"
-)
+# 3. Specify priors (using the improved PriorSpecification system)
+priors <- PriorSpecification()
+priors <- add_prior(priors, "b_treatment", "normal", 0, 2.5)
+priors <- add_prior(priors, "b_age_centered", "normal", 0, 1.0)
+priors <- add_prior(priors, "b_baseline_severity_centered", "normal", 0, 2.0)
+priors <- add_prior(priors, "Intercept", "normal", 0, 10)
+priors <- add_prior(priors, "sigma", "half_cauchy", NA, 5, 0)  # Automatically converts to student_t
 
-# 4. Set up parallel processing
-setup_parallel(strategy = "multisession", workers = 4)
+# Attach priors to model
+attr(model_spec, "priors") <- priors
+
+# 4. Set up parallel processing (optional)
+setup_parallel(strategy = "sequential")  # Use sequential for initial testing
 
 # 5. Fit Bayesian model
 result <- fit_model(
   model_spec = model_spec,
   data = data,
-  chains = 4,
-  iter = 2000
+  chains = 2,      # Fewer chains for quicker testing
+  iter = 1000      # Fewer iterations for quicker testing
 )
 
-# 6. Check diagnostics and extract results
-check_diagnostics(result)
+# 6. Check model and diagnostics
+print(result)
+diagnostics <- check_diagnostics(result)
+print(diagnostics)
+
+# 7. Extract and visualize results
 estimates <- extract_estimates(result)
 print(estimates)
 
-# 7. Create visualizations
+# Create visualizations
 plot_posterior(result)
-forest_plot <- plot_forest(estimates, parameter = "treatment")
+forest_plot <- plot_forest(estimates)
 ```
+
+### Expected Output
+
+The model should converge successfully and show:
+- Treatment effect estimate with credible intervals
+- Convergence diagnostics (Rhat ≈ 1.0, adequate ESS)
+- Posterior distributions for all parameters
 
 ## CSV-Based Workflow
 
@@ -222,11 +263,37 @@ source("test_bayestrials_workflow.R")
 devtools::check()
 ```
 
+## Troubleshooting
+
+### Common Installation Issues
+
+**Stan Compilation Errors:**
+- **macOS**: Install Xcode Command Line Tools: `xcode-select --install`
+- **Windows**: Ensure Rtools is properly installed and added to PATH
+- **All platforms**: Restart R after installing compiler tools
+
+**Memory Issues:**
+- Reduce sample size for initial testing: `n_observations = 100`
+- Use fewer chains: `chains = 1` or `chains = 2`
+- Reduce iterations: `iter = 500`
+
+### Common Model Fitting Issues
+
+**Convergence Problems:**
+- Increase `adapt_delta`: `control = list(adapt_delta = 0.99)`
+- Increase iterations: `iter = 4000`
+- Check for data issues (missing values, outliers)
+
+**Prior Specification:**
+- `half_cauchy` priors are automatically converted to `student_t(3, 0, scale)`
+- Use `to_brms_prior()` to preview prior conversion before fitting
+
 ## Getting Help
 
 - **Vignettes**: Run `browseVignettes("bayestrials")` for detailed tutorials
-- **Function Help**: Use `?function_name` for specific function documentation
+- **Function Help**: Use `?function_name` for specific function documentation  
 - **Issues**: Report bugs and feature requests on [GitHub](https://github.com/AartikSarma/bayestrials/issues)
+- **Stan Resources**: [Stan User's Guide](https://mc-stan.org/users/documentation/) for underlying methodology
 
 ## Contributing
 

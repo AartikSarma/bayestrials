@@ -188,21 +188,33 @@ fit_model <- function(model_spec,
   formula <- build_formula(model_spec)
   
   # Build family
-  # Use the brms family constructor functions rather than building a string
+  # Use the stats and brms family constructor functions
   if (model_spec$family == "bernoulli") {
-    family <- brms::bernoulli(link = model_spec$link)
+    family <- stats::binomial(link = model_spec$link)  # bernoulli is a special case of binomial
   } else if (model_spec$family == "binomial") {
-    family <- brms::binomial(link = model_spec$link)
+    family <- stats::binomial(link = model_spec$link)
   } else if (model_spec$family == "gaussian") {
-    family <- brms::gaussian(link = model_spec$link)
+    family <- stats::gaussian(link = model_spec$link)
   } else if (model_spec$family == "poisson") {
-    family <- brms::poisson(link = model_spec$link)
+    family <- stats::poisson(link = model_spec$link)
   } else if (model_spec$family == "negbinomial") {
-    family <- brms::negbinomial(link = model_spec$link)
+    # negbinomial is a brms-specific family
+    if (requireNamespace("brms", quietly = TRUE)) {
+      family <- brms::negbinomial(link = model_spec$link)
+    } else {
+      stop("brms required for negative binomial family")
+    }
   } else if (model_spec$family == "gamma") {
-    family <- brms::Gamma(link = model_spec$link)
+    family <- stats::Gamma(link = model_spec$link)
   } else if (model_spec$family == "weibull") {
-    family <- brms::weibull(link = model_spec$link)
+    # weibull might be brms-specific, check both
+    if (exists("weibull", envir = asNamespace("stats"))) {
+      family <- stats::weibull(link = model_spec$link) 
+    } else if (requireNamespace("brms", quietly = TRUE)) {
+      family <- brms::weibull(link = model_spec$link)
+    } else {
+      stop("Weibull family not available")
+    }
   } else {
     # For other families, try the string approach as fallback
     family <- paste0(model_spec$family, "(link = '", model_spec$link, "')")

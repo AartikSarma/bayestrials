@@ -1,0 +1,4 @@
+model_name,outcome,predictors,family,link
+continuous_model,outcome_continuous,treatment + age + baseline_severity,gaussian,identity
+binary_model,outcome_binary,treatment + age + baseline_severity,binomial,logit
+interaction_model,outcome_continuous,treatment * age + baseline_severity,gaussian,identity
